@@ -718,9 +718,11 @@ async function saveProfile() {
       try {
         iconUrl = await uploadProfileImage(selectedImageFile);
       } catch (uploadErr) {
-        console.warn('画像アップロード失敗:', uploadErr.message);
-        showToast('画像のアップロードに失敗しました。絵文字アイコンを使用します。', 'error');
-        iconUrl = currentUserData?.iconUrl || '👤';
+        const detail = uploadErr.code
+          ? `[${uploadErr.code}] ${uploadErr.message}`
+          : uploadErr.message || String(uploadErr);
+        showToast('プロフィール画像の保存に失敗しました: ' + detail, 'error');
+        return;
       }
       btn.textContent = '保存中…';
     }
