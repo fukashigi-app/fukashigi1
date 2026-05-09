@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <title>FUKASHIGI APP</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -16,7 +16,7 @@
 <header class="app-header">
   <div class="logo">FUKASHIGI</div>
   <div class="header-actions">
-    <span id="headerUserName" style="font-size:12px;color:var(--text-muted);letter-spacing:0.04em;"></span>
+    <span id="headerUserName" style="font-size:12px;color:var(--text-muted);letter-spacing:0.04em;font-family:'Inter',sans-serif;"></span>
     <button class="btn btn-outline btn-sm" onclick="doLogout()">ログアウト</button>
   </div>
 </header>
@@ -57,7 +57,7 @@
       <button class="checkin-btn" id="checkinBtn" onclick="openQRScanner()">
         <span class="icon">📷</span> QRチェックイン
       </button>
-      <div id="checkinStatus" style="text-align:center;font-size:12px;color:var(--text-muted);margin-top:8px;"></div>
+      <div id="checkinStatus" style="text-align:center;font-size:12px;color:var(--text-muted);margin-top:10px;font-family:'Inter',sans-serif;"></div>
     </div>
 
     <!-- 今日の来店メンバー -->
@@ -145,6 +145,7 @@
     <div id="mypagePointLogs">
       <div class="loading"><div class="spinner"></div> 読み込み中…</div>
     </div>
+
   </div><!-- /tab-mypage -->
 
 </div><!-- /main-content -->
@@ -173,7 +174,7 @@
       <div class="modal-title">QRチェックイン</div>
       <button class="modal-close" onclick="closeQRScanner()">✕</button>
     </div>
-    <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;line-height:1.6;">
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:18px;line-height:1.7;">
       会場に掲示されているQRコードをスキャンしてください
     </p>
     <div class="qr-scanner-wrap">
@@ -188,7 +189,7 @@
         </div>
       </div>
     </div>
-    <div id="qrMessage" style="text-align:center;font-size:14px;padding:14px;display:none;font-weight:600;border-radius:6px;"></div>
+    <div id="qrMessage" style="text-align:center;font-size:14px;padding:14px;display:none;font-weight:700;border-radius:8px;"></div>
     <button class="btn btn-outline btn-block" onclick="closeQRScanner()">閉じる</button>
   </div>
 </div>

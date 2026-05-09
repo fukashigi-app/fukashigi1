@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <title>FUKASHIGI APP — ログイン</title>
+  <title>FUKASHIGI — Members Only</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -65,9 +65,10 @@
     </div>
   </div>
 
-  <p style="margin-top:28px; font-size:11px; color:var(--text-muted); text-align:center; letter-spacing:0.1em;">
+  <p style="margin-top:32px; font-size:11px; color:var(--text-muted); text-align:center; letter-spacing:0.14em; font-family:'Inter',sans-serif;">
     FUKASHIGI TEAM — MEMBERS ONLY
   </p>
+
 </div>
 
 <!-- Firebase SDK -->
@@ -117,6 +118,7 @@
         'auth/wrong-password':    'パスワードが違います',
         'auth/invalid-email':     'メールアドレスの形式が正しくありません',
         'auth/too-many-requests': 'しばらく待ってから再試行してください',
+        'auth/invalid-credential': 'メールアドレスまたはパスワードが違います',
       };
       showErr(errEl, msgs[e.code] || 'ログインに失敗しました');
     }
