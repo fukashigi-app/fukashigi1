@@ -1,0 +1,18 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // プロフィール画像: 自分のファイルのみ読み書き可能
+    match /profile_images/{userId} {
+      // 認証済みユーザーは全員読める（プロフィール画像を表示するため）
+      allow read: if request.auth != null;
+
+      // 本人のみアップロード可能（画像ファイル、最大5MB）
+      allow write: if request.auth != null &&
+                   request.auth.uid == userId &&
+                   request.resource.size <= 5 * 1024 * 1024 &&
+                   request.resource.contentType.matches('image/.*');
+    }
+
+  }
+}

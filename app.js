@@ -16,7 +16,8 @@ let calMonth = new Date().getMonth();
 let chatUnsubscribe = null;
 
 // プロフィール編集
-let selectedIcon = null;
+let selectedIcon      = null;
+let selectedImageFile = null;
 
 const ICON_LIST = [
   '👤','😎','🤩','👑','🎭','🦊',
@@ -39,40 +40,70 @@ auth.onAuthStateChanged(async user => {
 });
 
 async function loadUserData() {
-  const doc = await db.collection('users').doc(currentUser.uid).get();
-  if (!doc.exists) {
-    const data = {
-      uid: currentUser.uid,
-      name: currentUser.displayName || currentUser.email.split('@')[0],
-      email: currentUser.email,
-      iconUrl: '👤',
-      memberNumber: 'F' + String(Date.now()).slice(-6),
-      role: 'member',
-      points: 0, totalPoints: 0, chips: 0,
-      rank: 'ROOKIE', title: '新参者',
-      badges: [], checkInCount: 0, eventJoinCount: 0,
-      comment: '',
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-    };
-    await db.collection('users').doc(currentUser.uid).set(data);
-    currentUserData = data;
-  } else {
-    currentUserData = doc.data();
-    const rankInfo = calcRank(currentUserData.checkInCount || 0);
-    const title    = calcTitle(currentUserData.checkInCount || 0, currentUserData.eventJoinCount || 0);
-    if (currentUserData.rank !== rankInfo.rank || currentUserData.title !== title) {
-      await db.collection('users').doc(currentUser.uid).update({ rank: rankInfo.rank, title });
-      currentUserData.rank  = rankInfo.rank;
-      currentUserData.title = title;
+  try {
+    const doc = await db.collection('users').doc(currentUser.uid).get();
+    if (!doc.exists) {
+      const data = {
+        uid: currentUser.uid,
+        name: currentUser.displayName || currentUser.email.split('@')[0],
+        email: currentUser.email,
+        iconUrl: '👤',
+        memberNumber: 'F' + String(Date.now()).slice(-6),
+        role: 'member',
+        points: 0, totalPoints: 0, chips: 0,
+        rank: 'ROOKIE', title: '新参者',
+        badges: [], checkInCount: 0, eventJoinCount: 0,
+        bio: '',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      };
+      await db.collection('users').doc(currentUser.uid).set(data);
+      currentUserData = data;
+    } else {
+      currentUserData = doc.data();
+      const rankInfo = calcRank(currentUserData.checkInCount || 0);
+      const title    = calcTitle(currentUserData.checkInCount || 0, currentUserData.eventJoinCount || 0);
+      if (currentUserData.rank !== rankInfo.rank || currentUserData.title !== title) {
+        await db.collection('users').doc(currentUser.uid).update({ rank: rankInfo.rank, title });
+        currentUserData.rank  = rankInfo.rank;
+        currentUserData.title = title;
+      }
     }
+    // 管理者はadmin.htmlへ
+    if (currentUserData.role === 'admin') { window.location.href = 'admin.html'; return; }
+    // イベントタブは管理者のみ表示（管理者はadmin.htmlに移動するため、通常は非表示）
+    const navEvents = document.getElementById('nav-events');
+    if (navEvents) navEvents.style.display = 'none';
+  } catch (e) {
+    console.error('ユーザーデータ読み込みエラー:', e);
   }
-  if (currentUserData.role === 'admin') { window.location.href = 'admin.html'; }
 }
 
 function doLogout() {
   if (chatUnsubscribe) chatUnsubscribe();
   auth.signOut().then(() => { window.location.href = 'index.html'; });
+}
+
+// ========================================
+// アバター表示ヘルパー
+// ========================================
+
+// 要素にアバター（画像URL or 絵文字）をセット
+function setAvatarEl(el, iconUrl) {
+  if (!el) return;
+  if (iconUrl && /^https?:\/\//.test(iconUrl)) {
+    el.innerHTML = `<img src="${escHtml(iconUrl)}" alt="avatar" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">`;
+  } else {
+    el.innerHTML = escHtml(iconUrl || '👤');
+  }
+}
+
+// テンプレートリテラル内で使うアバターHTML
+function avatarContent(iconUrl) {
+  if (iconUrl && /^https?:\/\//.test(iconUrl)) {
+    return `<img src="${escHtml(iconUrl)}" alt="avatar" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">`;
+  }
+  return escHtml(iconUrl || '👤');
 }
 
 // ========================================
@@ -83,7 +114,8 @@ function switchTab(tab) {
   document.querySelectorAll('.tab-section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('tab-' + tab).classList.add('active');
-  document.getElementById('nav-' + tab).classList.add('active');
+  const navEl = document.getElementById('nav-' + tab);
+  if (navEl) navEl.classList.add('active');
 
   if (tab === 'mypage') loadMyPage();
   if (tab === 'chat')   loadChat();
@@ -100,7 +132,7 @@ function loadHome() {
 
   document.getElementById('headerUserName').textContent = d.name;
   document.getElementById('homeUserName').textContent   = d.name;
-  document.getElementById('homeAvatar').textContent     = d.iconUrl || '👤';
+  setAvatarEl(document.getElementById('homeAvatar'), d.iconUrl);
 
   const rankInfo = calcRank(d.checkInCount || 0);
   document.getElementById('homeRankRow').innerHTML = `
@@ -120,17 +152,21 @@ function loadHome() {
 
 async function checkTodayCheckIn() {
   const today = todayStr();
-  const snap = await db.collection('checkins')
-    .where('userId', '==', currentUser.uid)
-    .where('dateStr', '==', today)
-    .limit(1).get();
+  try {
+    const snap = await db.collection('checkins')
+      .where('userId', '==', currentUser.uid)
+      .where('dateStr', '==', today)
+      .limit(1).get();
 
-  const btn    = document.getElementById('checkinBtn');
-  const status = document.getElementById('checkinStatus');
-  if (!snap.empty) {
-    btn.disabled = true;
-    btn.innerHTML = '<span class="icon">✓</span> 本日チェックイン済み';
-    status.textContent = '次回のチェックインは明日から可能です';
+    const btn    = document.getElementById('checkinBtn');
+    const status = document.getElementById('checkinStatus');
+    if (!snap.empty) {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="icon">✓</span> 本日チェックイン済み';
+      status.textContent = '次回のチェックインは明日から可能です';
+    }
+  } catch (e) {
+    console.error('チェックイン確認エラー:', e);
   }
 }
 
@@ -138,21 +174,27 @@ async function loadTodayMembers() {
   const today   = todayStr();
   const container = document.getElementById('todayMembers');
   try {
+    // 複合インデックス不要なよう orderBy なしで取得 → JS でソート
     const snap = await db.collection('checkins')
       .where('dateStr', '==', today)
-      .orderBy('checkedInAt', 'asc')
       .limit(20).get();
 
     if (snap.empty) {
       container.innerHTML = '<div style="font-size:13px;color:var(--text-muted);padding:8px 0;">まだ来店者がいません</div>';
       return;
     }
-    container.innerHTML = snap.docs.map(doc => {
+
+    const sorted = snap.docs.sort((a, b) => {
+      const at = a.data().checkedInAt?.toMillis?.() || 0;
+      const bt = b.data().checkedInAt?.toMillis?.() || 0;
+      return at - bt;
+    });
+
+    container.innerHTML = sorted.map(doc => {
       const c = doc.data();
-      const icon = c.userIcon || (c.userName || '?').charAt(0);
       return `
         <div class="today-member-item">
-          <div class="today-member-avatar">${icon}</div>
+          <div class="today-member-avatar">${avatarContent(c.userIcon)}</div>
           <div class="today-member-name">${escHtml(c.userName || '—')}</div>
         </div>`;
     }).join('');
@@ -166,7 +208,7 @@ async function loadNotices() {
   try {
     const snap = await db.collection('announcements')
       .orderBy('createdAt', 'desc')
-      .limit(3).get();
+      .limit(5).get();
 
     if (snap.empty) {
       container.innerHTML = '<div class="empty-state"><p>お知らせはありません</p></div>';
@@ -190,12 +232,15 @@ async function loadHomeEvents() {
   const container = document.getElementById('homeEvents');
   try {
     const today = new Date().toISOString().slice(0, 10);
+    // where + orderBy の複合インデックス不要なよう isPublic フィルタはJS側で実施
     const snap  = await db.collection('events')
-      .where('isPublic', '==', true)
       .orderBy('date', 'asc')
-      .limit(10).get();
+      .limit(20).get();
 
-    const upcoming = snap.docs.filter(d => (d.data().date || '') >= today);
+    const upcoming = snap.docs.filter(d => {
+      const ev = d.data();
+      return ev.isPublic !== false && (ev.date || '') >= today;
+    });
 
     if (upcoming.length === 0) {
       container.innerHTML = '<div class="empty-state"><p>予定されているイベントはありません</p></div>';
@@ -224,8 +269,6 @@ async function loadEvents() {
   renderDayList();
 }
 
-// ---- カレンダー ----
-
 function calPrev() {
   calMonth--;
   if (calMonth < 0) { calMonth = 11; calYear--; }
@@ -251,7 +294,6 @@ function renderCalendar() {
   const firstDay = new Date(calYear, calMonth, 1).getDay();
   const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
 
-  // この月のイベント日セット
   const eventDays = new Set(
     allEvents
       .filter(ev => {
@@ -278,8 +320,6 @@ function jumpToDay(day) {
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// ---- 日別一覧 ----
-
 function renderDayList() {
   const container = document.getElementById('eventsDayList');
   if (!container) return;
@@ -292,7 +332,6 @@ function renderDayList() {
     return;
   }
 
-  // 日付でグループ化
   const groups = {};
   monthEvents.forEach(ev => {
     const key = ev.date;
@@ -605,14 +644,23 @@ function loadChat() {
   const container = document.getElementById('chatMessages');
   container.innerHTML = '';
 
+  // 24時間以内のメッセージのみ取得
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const firestoreCutoff = firebase.firestore.Timestamp.fromDate(cutoff);
+
   chatUnsubscribe = db
     .collection('chats')
+    .where('createdAt', '>=', firestoreCutoff)
     .orderBy('createdAt', 'asc')
     .limit(100)
     .onSnapshot(snap => {
       renderChatMessages(snap.docs);
     }, err => {
-      container.innerHTML = '<div class="chat-system-msg">読み込みエラー</div>';
+      // where + orderBy が同一フィールドなのでインデックス不要だが念のため
+      const errMsg = err.code === 'permission-denied'
+        ? 'チャットの読み込み権限がありません。'
+        : '読み込みエラー: ' + err.message;
+      container.innerHTML = `<div class="chat-system-msg">${escHtml(errMsg)}</div>`;
     });
 }
 
@@ -620,23 +668,21 @@ function renderChatMessages(docs) {
   const container = document.getElementById('chatMessages');
   const wasAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 60;
 
-  const visible = docs;
-
-  if (visible.length === 0) {
+  if (docs.length === 0) {
     container.innerHTML = '<div class="chat-system-msg">まだメッセージがありません。最初のメッセージを送ってみましょう！</div>';
     return;
   }
 
-  container.innerHTML = visible.map(doc => {
+  container.innerHTML = docs.map(doc => {
     const m   = doc.data();
     const own = m.uid === currentUser?.uid;
-    const icon = m.userIcon || '👤';
+    const iconHtml = avatarContent(m.userIcon);
     const canDelete = own || (currentUserData?.role === 'admin');
     const timeStr = m.createdAt ? formatTimeOnly(m.createdAt) : '';
 
     return `
       <div class="chat-msg ${own ? 'own' : ''}">
-        ${!own ? `<div class="chat-avatar">${escHtml(icon)}</div>` : ''}
+        ${!own ? `<div class="chat-avatar">${iconHtml}</div>` : ''}
         <div class="chat-content">
           ${!own ? `<div class="chat-name">${escHtml(m.name || '—')}</div>` : ''}
           <div class="chat-bubble">${escHtml(m.message)}</div>
@@ -645,7 +691,7 @@ function renderChatMessages(docs) {
             ${canDelete ? `<button class="chat-delete" onclick="deleteChatMessage('${doc.id}')">削除</button>` : ''}
           </div>
         </div>
-        ${own ? `<div class="chat-avatar">${escHtml(icon)}</div>` : ''}
+        ${own ? `<div class="chat-avatar">${iconHtml}</div>` : ''}
       </div>`;
   }).join('');
 
@@ -657,26 +703,32 @@ function renderChatMessages(docs) {
 async function sendChatMessage() {
   const input = document.getElementById('chatInput');
   const message = input.value.trim();
-  if (!message) return;
+  if (!message || !currentUser) return;
 
   const btn = document.getElementById('chatSendBtn');
   btn.disabled = true;
+  const savedMsg = input.value;
   input.value = '';
   autoResizeChatInput(input);
 
   try {
-    await db
-      .collection('chats')
-      .add({
-        uid:       currentUser.uid,
-        name:      currentUserData.name,
-        userIcon:  currentUserData.iconUrl || '👤',
-        message,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      });
+    await db.collection('chats').add({
+      uid:       currentUser.uid,
+      name:      currentUserData?.name || '名無し',
+      userIcon:  currentUserData?.iconUrl || '👤',
+      message,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
   } catch (e) {
-    showToast('送信に失敗しました', 'error');
-    input.value = message;
+    const errMsgs = {
+      'permission-denied': '送信権限がありません。ログインし直してください。',
+      'unavailable':       'ネットワークエラーが発生しました。接続を確認してください。',
+      'not-found':         'チャットコレクションが見つかりません。',
+    };
+    const code = e.code?.split('/')[1] || '';
+    showToast(errMsgs[code] || '送信に失敗しました：' + e.message, 'error');
+    input.value = savedMsg;
+    autoResizeChatInput(input);
   } finally {
     btn.disabled = false;
     input.focus();
@@ -693,7 +745,6 @@ async function deleteChatMessage(msgId) {
 }
 
 function chatKeyDown(e) {
-  // PC: Enter で送信、Shift+Enter で改行
   if (e.key === 'Enter' && !e.shiftKey && window.innerWidth >= 600) {
     e.preventDefault();
     sendChatMessage();
@@ -710,13 +761,28 @@ function autoResizeChatInput(el) {
 // ========================================
 
 function openEditProfile() {
-  selectedIcon = currentUserData?.iconUrl || '👤';
+  selectedIcon      = currentUserData?.iconUrl || '👤';
+  selectedImageFile = null;
 
+  // 画像プレビューを現在のアイコンで初期化
+  const preview = document.getElementById('profileImagePreview');
+  if (preview) {
+    if (selectedIcon && /^https?:\/\//.test(selectedIcon)) {
+      preview.innerHTML = `<img src="${escHtml(selectedIcon)}" style="width:100%;height:100%;object-fit:cover;">`;
+    } else {
+      preview.innerHTML = selectedIcon || '👤';
+    }
+  }
+
+  // 絵文字ピッカー
   const grid = document.getElementById('iconPickerGrid');
-  grid.innerHTML = ICON_LIST.map(icon => `
-    <div class="icon-opt ${icon === selectedIcon ? 'selected' : ''}"
-         onclick="selectIcon('${icon}', this)">${icon}</div>
-  `).join('');
+  if (grid) {
+    const isEmoji = !selectedIcon || !/^https?:\/\//.test(selectedIcon);
+    grid.innerHTML = ICON_LIST.map(icon => `
+      <div class="icon-opt ${(isEmoji && icon === selectedIcon) ? 'selected' : ''}"
+           onclick="selectIcon('${icon}', this)">${icon}</div>
+    `).join('');
+  }
 
   document.getElementById('editName').value = currentUserData?.name || '';
   const bioEl = document.getElementById('editBio');
@@ -725,18 +791,60 @@ function openEditProfile() {
 }
 
 function selectIcon(icon, el) {
-  selectedIcon = icon;
+  selectedIcon      = icon;
+  selectedImageFile = null;
   document.querySelectorAll('.icon-opt').forEach(o => o.classList.remove('selected'));
   el.classList.add('selected');
+  // プレビューも更新
+  const preview = document.getElementById('profileImagePreview');
+  if (preview) preview.innerHTML = icon;
+}
+
+function handleProfileImageChange(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('ファイルサイズは5MB以下にしてください', 'error');
+    event.target.value = '';
+    return;
+  }
+  if (!file.type.startsWith('image/')) {
+    showToast('画像ファイルを選択してください', 'error');
+    event.target.value = '';
+    return;
+  }
+
+  selectedImageFile = file;
+  selectedIcon = null;
+  document.querySelectorAll('.icon-opt').forEach(o => o.classList.remove('selected'));
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    const preview = document.getElementById('profileImagePreview');
+    if (preview) {
+      preview.innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover;">`;
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+async function uploadProfileImage(file) {
+  const storage    = firebase.storage();
+  const storageRef = storage.ref(`profile_images/${currentUser.uid}`);
+  const snapshot   = await storageRef.put(file);
+  return await snapshot.ref.getDownloadURL();
 }
 
 function closeEditProfile() {
   document.getElementById('editProfileModal').classList.remove('open');
+  selectedImageFile = null;
+  const fileInput = document.getElementById('profileImageInput');
+  if (fileInput) fileInput.value = '';
 }
 
 async function saveProfile() {
   const name = document.getElementById('editName').value.trim();
-  const icon = selectedIcon || '👤';
   const bioEl = document.getElementById('editBio');
   const bio  = bioEl ? bioEl.value.trim() : '';
 
@@ -748,22 +856,55 @@ async function saveProfile() {
   btn.textContent = '保存中…';
 
   try {
-    await db.collection('users').doc(currentUser.uid).update({
+    let iconUrl = selectedIcon || currentUserData?.iconUrl || '👤';
+
+    // 画像ファイルが選択されている場合はFirebase Storageへアップロード
+    if (selectedImageFile) {
+      btn.textContent = '画像アップロード中…';
+      try {
+        iconUrl = await uploadProfileImage(selectedImageFile);
+      } catch (uploadErr) {
+        // Storage 権限エラー等のフォールバック：絵文字を維持
+        console.warn('画像アップロード失敗:', uploadErr.message);
+        showToast('画像のアップロードに失敗しました。絵文字アイコンを使用します。', 'error');
+        iconUrl = currentUserData?.iconUrl || '👤';
+      }
+      btn.textContent = '保存中…';
+    }
+
+    const updateData = {
       name,
-      iconUrl: icon,
+      iconUrl,
       bio,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-    });
+    };
+
+    // 15秒タイムアウト付きで保存
+    await Promise.race([
+      db.collection('users').doc(currentUser.uid).update(updateData),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('TIMEOUT')), 15000)
+      ),
+    ]);
+
     currentUserData.name    = name;
-    currentUserData.iconUrl = icon;
+    currentUserData.iconUrl = iconUrl;
     currentUserData.bio     = bio;
+    selectedImageFile = null;
 
     showToast('プロフィールを更新しました', 'success');
     closeEditProfile();
     loadHome();
     loadMyPage();
   } catch (e) {
-    showToast('保存に失敗しました', 'error');
+    const errMsgs = {
+      'permission-denied': '保存権限がありません。ログインし直してください。',
+      'unavailable':       'サービスが利用できません。しばらくしてから再試行してください。',
+      'not-found':         'ユーザーデータが見つかりません。',
+      'TIMEOUT':           '保存がタイムアウトしました。ネットワーク接続を確認してください。',
+    };
+    const code = e.message === 'TIMEOUT' ? 'TIMEOUT' : (e.code?.split('/')[1] || '');
+    showToast(errMsgs[code] || '保存に失敗しました：' + e.message, 'error');
   } finally {
     btn.disabled = false;
     btn.textContent = '保存する';
@@ -775,61 +916,73 @@ async function saveProfile() {
 // ========================================
 
 async function loadMyPage() {
-  const doc = await db.collection('users').doc(currentUser.uid).get();
-  currentUserData = doc.data();
-  const d   = currentUserData;
+  try {
+    const doc = await db.collection('users').doc(currentUser.uid).get();
+    if (!doc.exists) return;
+    currentUserData = doc.data();
+    const d   = currentUserData;
 
-  document.getElementById('mypageAvatar').textContent   = d.iconUrl || '👤';
-  document.getElementById('mypageName').textContent     = d.name;
-  document.getElementById('mypageMemberNo').textContent = 'MEMBER #' + (d.memberNumber || '—');
+    setAvatarEl(document.getElementById('mypageAvatar'), d.iconUrl);
+    document.getElementById('mypageName').textContent     = d.name;
+    document.getElementById('mypageMemberNo').textContent = 'MEMBER #' + (d.memberNumber || '—');
 
-  const rankInfo = calcRank(d.checkInCount || 0);
-  document.getElementById('mypageRankRow').innerHTML = `
-    <span class="badge badge-gold">${rankInfo.rank}</span>
-    <span class="badge badge-gray" style="margin-left:6px;">${d.title || '新参者'}</span>
-  `;
+    const rankInfo = calcRank(d.checkInCount || 0);
+    document.getElementById('mypageRankRow').innerHTML = `
+      <span class="badge badge-gold">${rankInfo.rank}</span>
+      <span class="badge badge-gray" style="margin-left:6px;">${d.title || '新参者'}</span>
+    `;
 
-  document.getElementById('mypagePoints').textContent      = (d.points || 0).toLocaleString();
-  document.getElementById('mypageTotalPoints').textContent = (d.totalPoints || 0).toLocaleString();
-  document.getElementById('mypageChips').textContent       = d.chips || 0;
-  document.getElementById('mypageCheckins').textContent    = d.checkInCount || 0;
-  document.getElementById('mypageEventJoins').textContent  = d.eventJoinCount || 0;
+    document.getElementById('mypagePoints').textContent      = (d.points || 0).toLocaleString();
+    document.getElementById('mypageTotalPoints').textContent = (d.totalPoints || 0).toLocaleString();
+    document.getElementById('mypageChips').textContent       = d.chips || 0;
+    document.getElementById('mypageCheckins').textContent    = d.checkInCount || 0;
+    document.getElementById('mypageEventJoins').textContent  = d.eventJoinCount || 0;
 
-  const bioWrap = document.getElementById('mypageBioWrap');
-  if (bioWrap) {
-    const bio = d.bio || '';
-    if (bio) {
-      bioWrap.textContent = bio;
-      bioWrap.style.display = '';
-    } else {
-      bioWrap.style.display = 'none';
+    const bioWrap = document.getElementById('mypageBioWrap');
+    if (bioWrap) {
+      const bio = d.bio || '';
+      if (bio) {
+        bioWrap.textContent = bio;
+        bioWrap.style.display = '';
+      } else {
+        bioWrap.style.display = 'none';
+      }
     }
+
+    const earned = d.badges || [];
+    document.getElementById('mypageBadges').innerHTML = BADGES_DEF.map(b => `
+      <div class="badge-item ${earned.includes(b.id) ? 'earned' : ''}">
+        <span class="badge-icon">${b.icon}</span>
+        <span class="badge-name">${b.name}</span>
+      </div>
+    `).join('');
+
+    loadPointLogs();
+  } catch (e) {
+    console.error('マイページ読み込みエラー:', e);
   }
-
-  const earned = d.badges || [];
-  document.getElementById('mypageBadges').innerHTML = BADGES_DEF.map(b => `
-    <div class="badge-item ${earned.includes(b.id) ? 'earned' : ''}">
-      <span class="badge-icon">${b.icon}</span>
-      <span class="badge-name">${b.name}</span>
-    </div>
-  `).join('');
-
-  loadPointLogs();
 }
 
 async function loadPointLogs() {
   const container = document.getElementById('mypagePointLogs');
   try {
+    // 複合インデックス不要なよう orderBy をJS側でソート
     const snap = await db.collection('pointLogs')
       .where('userId', '==', currentUser.uid)
-      .orderBy('createdAt', 'desc')
-      .limit(20).get();
+      .limit(30).get();
 
     if (snap.empty) {
       container.innerHTML = '<div class="empty-state"><p>履歴はありません</p></div>';
       return;
     }
-    container.innerHTML = snap.docs.map(doc => {
+
+    const sorted = snap.docs.sort((a, b) => {
+      const at = a.data().createdAt?.toMillis?.() || 0;
+      const bt = b.data().createdAt?.toMillis?.() || 0;
+      return bt - at;
+    });
+
+    container.innerHTML = sorted.map(doc => {
       const l    = doc.data();
       const plus = l.amount > 0;
       return `
@@ -866,7 +1019,7 @@ function showToast(msg, type = 'info') {
   setTimeout(() => {
     el.classList.remove('show');
     setTimeout(() => el.remove(), 300);
-  }, 3000);
+  }, 4000);
 }
 
 function escHtml(str) {

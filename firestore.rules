@@ -1,0 +1,104 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 管理者判定ヘルパー
+    function isAdmin() {
+      return request.auth != null &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // 自分自身か確認
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    // ========== users ==========
+    match /users/{userId} {
+      // 認証済みユーザーは全員読める
+      allow read: if request.auth != null;
+
+      // 新規作成: 自分のドキュメントのみ
+      allow create: if isOwner(userId);
+
+      // 更新: 自分自身（名前・アイコン・自己紹介のみ）または管理者（何でも）
+      allow update: if isAdmin() ||
+                    (isOwner(userId) &&
+                     request.resource.data.diff(resource.data).affectedKeys()
+                       .hasOnly(['name', 'iconUrl', 'bio', 'updatedAt',
+                                 'checkInCount', 'points', 'totalPoints',
+                                 'eventJoinCount', 'badges', 'rank', 'title']));
+    }
+
+    // ========== chats ==========
+    match /chats/{chatId} {
+      // 認証済みは読める
+      allow read: if request.auth != null;
+
+      // 自分のメッセージのみ作成可能
+      allow create: if request.auth != null &&
+                    request.resource.data.uid == request.auth.uid &&
+                    request.resource.data.message is string &&
+                    request.resource.data.message.size() > 0 &&
+                    request.resource.data.message.size() <= 1000;
+
+      // 自分のメッセージまたは管理者が削除可能
+      allow delete: if request.auth != null &&
+                    (resource.data.uid == request.auth.uid || isAdmin());
+    }
+
+    // ========== events ==========
+    match /events/{eventId} {
+      // 認証済みは読める
+      allow read: if request.auth != null;
+
+      // 管理者のみ作成・更新・削除
+      allow create, update, delete: if isAdmin();
+
+      // サブコレクション: イベント参加者更新は認証済みユーザーも可
+      // （participants フィールドのみ変更する場合）
+      allow update: if request.auth != null &&
+                    request.resource.data.diff(resource.data).affectedKeys()
+                      .hasOnly(['participants', 'updatedAt']);
+
+      // 管理者投稿 (posts サブコレクション)
+      match /posts/{postId} {
+        allow read: if request.auth != null;
+        allow create, update, delete: if isAdmin();
+      }
+    }
+
+    // ========== announcements ==========
+    match /announcements/{announcementId} {
+      // 認証済みは読める
+      allow read: if request.auth != null;
+
+      // 管理者のみ作成・更新・削除
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ========== pointLogs ==========
+    match /pointLogs/{logId} {
+      // 本人または管理者が読める
+      allow read: if request.auth != null &&
+                  (resource.data.userId == request.auth.uid || isAdmin());
+
+      // 管理者のみ作成（ユーザーはポイントを自己付与不可）
+      allow create: if isAdmin();
+    }
+
+    // ========== checkins ==========
+    match /checkins/{checkinId} {
+      // 認証済みは読める
+      allow read: if request.auth != null;
+
+      // 自分のチェックインのみ作成可能
+      allow create: if request.auth != null &&
+                    request.resource.data.userId == request.auth.uid;
+
+      // 管理者は削除可能
+      allow delete: if isAdmin();
+    }
+
+  }
+}
