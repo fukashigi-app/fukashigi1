@@ -685,8 +685,7 @@ function handleProfileImageChange(event) {
 }
 
 async function uploadProfileImage(file) {
-  const storage    = firebase.storage();
-  const storageRef = storage.ref(`profile_images/${currentUser.uid}`);
+  const storageRef = storage.ref(`profile_images/${currentUser.uid}/avatar`);
   const snapshot   = await storageRef.put(file);
   return await snapshot.ref.getDownloadURL();
 }
