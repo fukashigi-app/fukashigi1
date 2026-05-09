@@ -5,7 +5,7 @@
 // プロジェクトを作成し、以下の値を設定してください。
 
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
+  apiKey: "AIzaSyDt2LBQ7W_k2XGOYw273Aoz72-sY2i4z6k",
   authDomain: "YOUR_AUTH_DOMAIN",
   projectId: "YOUR_PROJECT_ID",
   storageBucket: "YOUR_STORAGE_BUCKET",
