@@ -2,10 +2,12 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // 管理者判定ヘルパー
+    // 管理者判定ヘルパー（role == 'admin' または name == '樹'）
     function isAdmin() {
-      return request.auth != null &&
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      return request.auth != null && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.name == '樹'
+      );
     }
 
     // 自分自身か確認
@@ -21,13 +23,14 @@ service cloud.firestore {
       // 新規作成: 自分のドキュメントのみ
       allow create: if isOwner(userId);
 
-      // 更新: 自分自身（名前・アイコン・自己紹介のみ）または管理者（何でも）
+      // 更新:
+      //   管理者は何でも更新可能
+      //   本人はプロフィール項目（name, iconUrl, bio, updatedAt）のみ変更可能
+      //   QRチェックイン時のポイント加算も許可（points, updatedAt）
       allow update: if isAdmin() ||
                     (isOwner(userId) &&
                      request.resource.data.diff(resource.data).affectedKeys()
-                       .hasOnly(['name', 'iconUrl', 'bio', 'updatedAt',
-                                 'checkInCount', 'points', 'totalPoints',
-                                 'eventJoinCount', 'badges', 'rank', 'title']));
+                       .hasOnly(['name', 'iconUrl', 'bio', 'updatedAt', 'points', 'disabled']));
     }
 
     // ========== chats ==========
@@ -54,18 +57,6 @@ service cloud.firestore {
 
       // 管理者のみ作成・更新・削除
       allow create, update, delete: if isAdmin();
-
-      // サブコレクション: イベント参加者更新は認証済みユーザーも可
-      // （participants フィールドのみ変更する場合）
-      allow update: if request.auth != null &&
-                    request.resource.data.diff(resource.data).affectedKeys()
-                      .hasOnly(['participants', 'updatedAt']);
-
-      // 管理者投稿 (posts サブコレクション)
-      match /posts/{postId} {
-        allow read: if request.auth != null;
-        allow create, update, delete: if isAdmin();
-      }
     }
 
     // ========== announcements ==========
@@ -81,7 +72,7 @@ service cloud.firestore {
     match /pointLogs/{logId} {
       // 本人または管理者が読める
       allow read: if request.auth != null &&
-                  (resource.data.userId == request.auth.uid || isAdmin());
+                  (resource.data.uid == request.auth.uid || isAdmin());
 
       // 管理者のみ作成（ユーザーはポイントを自己付与不可）
       allow create: if isAdmin();
@@ -94,7 +85,7 @@ service cloud.firestore {
 
       // 自分のチェックインのみ作成可能
       allow create: if request.auth != null &&
-                    request.resource.data.userId == request.auth.uid;
+                    request.resource.data.uid == request.auth.uid;
 
       // 管理者は削除可能
       allow delete: if isAdmin();
