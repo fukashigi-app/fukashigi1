@@ -1241,14 +1241,26 @@ body {
 .chat-msg {
   display: flex;
   gap: 10px;
-  margin-bottom: 16px;
-  align-items: flex-end;
+  margin-bottom: 18px;
+  align-items: flex-start;
 }
-.chat-msg.own { flex-direction: row-reverse; }
+.chat-msg.own {
+  flex-direction: row-reverse;
+}
+
+/* アイコン＋ユーザー名の縦並び列 */
+.chat-avatar-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  width: 42px;
+}
 
 .chat-avatar {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   background: var(--bg-card2);
   border: 1px solid var(--border);
@@ -1257,26 +1269,33 @@ body {
   justify-content: center;
   font-size: 18px;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
-.chat-content { max-width: 74%; }
-.chat-msg.own .chat-content {
+/* アイコン下のユーザー名 */
+.chat-username {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: 'Inter', 'Noto Sans JP', sans-serif;
+  text-align: center;
+  line-height: 1.2;
+  word-break: break-all;
+  max-width: 42px;
+}
+
+.chat-content {
+  max-width: 72%;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
 }
-
-.chat-name {
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-bottom: 4px;
-  font-family: 'Inter', sans-serif;
+.chat-msg.own .chat-content {
+  align-items: flex-end;
 }
 
 .chat-bubble {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 12px 12px 12px 2px;
+  border-radius: 4px 12px 12px 12px;
   padding: 10px 14px;
   font-size: 14px;
   color: var(--text-sub);
@@ -1286,7 +1305,7 @@ body {
 .chat-msg.own .chat-bubble {
   background: var(--gold-dim);
   border-color: rgba(212,175,55,0.3);
-  border-radius: 12px 12px 2px 12px;
+  border-radius: 12px 4px 12px 12px;
   color: var(--text);
 }
 
@@ -1295,6 +1314,9 @@ body {
   align-items: center;
   gap: 6px;
   margin-top: 4px;
+}
+.chat-msg.own .chat-time-row {
+  flex-direction: row-reverse;
 }
 .chat-time {
   font-size: 10px;

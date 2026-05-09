@@ -59,11 +59,8 @@ async function loadUserData() {
     } else {
       currentUserData = doc.data();
     }
-    // 管理者はadmin.htmlへ
-    if (currentUserData.role === 'admin' || currentUserData.name === '樹') {
-      window.location.href = 'admin.html';
-      return;
-    }
+    // 管理者フラグをセット（自動リダイレクトはしない）
+    currentUserData._isAdmin = (currentUserData.role === 'admin' || currentUserData.name === '不可思議');
   } catch (e) {
     console.error('ユーザーデータ読み込みエラー:', e);
   }
@@ -123,6 +120,10 @@ function loadHome() {
   setAvatarEl(document.getElementById('homeAvatar'), d.iconUrl);
 
   document.getElementById('statPoints').textContent = (d.points || 0).toLocaleString();
+
+  // 管理者なら管理者ページボタンを表示
+  const adminBtn = document.getElementById('adminPageBtn');
+  if (adminBtn) adminBtn.style.display = d._isAdmin ? '' : 'none';
 
   checkTodayCheckIn();
   loadTodayMembers();
@@ -535,19 +536,21 @@ function renderChatMessages(docs) {
     const iconHtml = avatarContent(m.iconUrl || m.userIcon);
     const canDelete = own || (currentUserData?.role === 'admin');
     const timeStr = m.createdAt ? formatTimeOnly(m.createdAt) : '';
+    const nameLabel = escHtml(m.name || '—');
 
     return `
       <div class="chat-msg ${own ? 'own' : ''}">
-        ${!own ? `<div class="chat-avatar">${iconHtml}</div>` : ''}
+        <div class="chat-avatar-col">
+          <div class="chat-avatar">${iconHtml}</div>
+          <div class="chat-username">${nameLabel}</div>
+        </div>
         <div class="chat-content">
-          ${!own ? `<div class="chat-name">${escHtml(m.name || '—')}</div>` : ''}
           <div class="chat-bubble">${escHtml(m.message)}</div>
           <div class="chat-time-row">
             <span class="chat-time">${timeStr}</span>
             ${canDelete ? `<button class="chat-delete" onclick="deleteChatMessage('${doc.id}')">削除</button>` : ''}
           </div>
         </div>
-        ${own ? `<div class="chat-avatar">${iconHtml}</div>` : ''}
       </div>`;
   }).join('');
 

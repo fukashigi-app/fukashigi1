@@ -30,8 +30,8 @@ auth.onAuthStateChanged(async user => {
     return;
   }
   const data = doc.data();
-  // name が「樹」または role が admin の場合に管理者として扱う
-  if (data.role !== 'admin' && data.name !== '樹') {
+  // name が「不可思議」または role が admin の場合に管理者として扱う
+  if (data.role !== 'admin' && data.name !== '不可思議') {
     showToast('管理者権限がありません', 'error');
     setTimeout(() => { window.location.href = 'app.html'; }, 1500);
     return;
