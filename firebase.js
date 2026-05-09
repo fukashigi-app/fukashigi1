@@ -8,10 +8,11 @@ const firebaseConfig = {
   measurementId: "G-7S8QM44H4Q"
 };
 
-// 念のため、初期化の前に既存のインスタンスを確認
+// Firebaseの初期化
 if (!firebase.apps.length) {
-    firebase.initializeApp(firebaseConfig);
+  firebase.initializeApp(firebaseConfig);
 }
 
+// グローバル変数にセット
 window.auth = firebase.auth();
 window.db = firebase.firestore();
