@@ -12,7 +12,18 @@
 
 <div class="toast-container" id="toastContainer"></div>
 
-<div class="login-page">
+<!-- ローディングオーバーレイ（認証確認中） -->
+<div id="authLoading" style="position:fixed;inset:0;background:#000;display:flex;align-items:center;justify-content:center;z-index:9999;">
+  <div style="text-align:center;">
+    <div style="font-family:'Inter',sans-serif;font-size:22px;font-weight:900;letter-spacing:0.18em;color:#D4AF37;margin-bottom:8px;">FUKASHIGI</div>
+    <div style="width:32px;height:2px;background:linear-gradient(90deg,#D4AF37,#E8C860);margin:0 auto;animation:loadBar 1s ease-in-out infinite alternate;"></div>
+  </div>
+</div>
+<style>
+@keyframes loadBar { from{width:16px;opacity:.4} to{width:48px;opacity:1} }
+</style>
+
+<div class="login-page" id="loginPageWrap" style="display:none;">
 
   <!-- ロゴ -->
   <div class="login-logo">
@@ -69,7 +80,7 @@
     FUKASHIGI TEAM — MEMBERS ONLY
   </p>
 
-</div>
+</div><!-- /login-page -->
 
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
@@ -86,6 +97,9 @@
           window.location.href = 'app.html';
         }
       }).catch(() => { window.location.href = 'app.html'; });
+    } else {
+      document.getElementById('authLoading').style.display = 'none';
+      document.getElementById('loginPageWrap').style.display = '';
     }
   });
 

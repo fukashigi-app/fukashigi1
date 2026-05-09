@@ -5,13 +5,15 @@
 let currentUser     = null;
 let currentUserData = null;
 let allEvents       = [];
-let currentFilter   = 'all';
 let qrScanner       = null;
 let selectedEvent   = null;
 
+// カレンダー
+let calYear  = new Date().getFullYear();
+let calMonth = new Date().getMonth();
+
 // チャット
-let chatUnsubscribe  = null;
-let currentChatRoom  = 'global';
+let chatUnsubscribe = null;
 
 // プロフィール編集
 let selectedIcon = null;
@@ -85,6 +87,7 @@ function switchTab(tab) {
 
   if (tab === 'mypage') loadMyPage();
   if (tab === 'chat')   loadChat();
+  if (tab === 'events') { renderCalendar(); renderDayList(); }
 }
 
 // ========================================
@@ -161,8 +164,7 @@ async function loadTodayMembers() {
 async function loadNotices() {
   const container = document.getElementById('homeNotices');
   try {
-    const snap = await db.collection('notices')
-      .orderBy('pinned', 'desc')
+    const snap = await db.collection('announcements')
       .orderBy('createdAt', 'desc')
       .limit(3).get();
 
@@ -173,8 +175,7 @@ async function loadNotices() {
     container.innerHTML = snap.docs.map(doc => {
       const n = doc.data();
       return `
-        <div class="notice-card ${n.pinned ? 'pinned' : ''}">
-          ${n.pinned ? '<span class="badge badge-gold" style="margin-bottom:8px;display:inline-block;">固定</span>' : ''}
+        <div class="notice-card">
           <div class="notice-title">${escHtml(n.title)}</div>
           <div class="notice-body">${escHtml(n.body)}</div>
           <div class="notice-meta">${formatDate(n.createdAt)}</div>
@@ -207,47 +208,125 @@ async function loadHomeEvents() {
 }
 
 // ========================================
-// イベント一覧
+// イベント一覧（カレンダー＋日別一覧）
 // ========================================
 
 async function loadEvents() {
-  const container = document.getElementById('eventsList');
   try {
     const snap = await db.collection('events')
-      .where('isPublic', '==', true)
-      .orderBy('date', 'desc')
+      .orderBy('date', 'asc')
       .get();
     allEvents = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    renderEventsList();
   } catch (e) {
-    container.innerHTML = '<div class="empty-state"><p>読み込みエラー</p></div>';
+    allEvents = [];
   }
+  renderCalendar();
+  renderDayList();
 }
 
-function renderEventsList() {
-  const container = document.getElementById('eventsList');
-  const filtered  = currentFilter === 'all'
-    ? allEvents
-    : allEvents.filter(e => e.category === currentFilter);
+// ---- カレンダー ----
 
-  if (filtered.length === 0) {
-    container.innerHTML = '<div class="empty-state"><div class="empty-icon">📅</div><p>該当するイベントはありません</p></div>';
+function calPrev() {
+  calMonth--;
+  if (calMonth < 0) { calMonth = 11; calYear--; }
+  renderCalendar();
+  renderDayList();
+}
+
+function calNext() {
+  calMonth++;
+  if (calMonth > 11) { calMonth = 0; calYear++; }
+  renderCalendar();
+  renderDayList();
+}
+
+function renderCalendar() {
+  const label = document.getElementById('calMonthLabel');
+  if (label) label.textContent = calYear + '年 ' + (calMonth + 1) + '月';
+
+  const grid = document.getElementById('calGrid');
+  if (!grid) return;
+
+  const today = new Date();
+  const firstDay = new Date(calYear, calMonth, 1).getDay();
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+
+  // この月のイベント日セット
+  const eventDays = new Set(
+    allEvents
+      .filter(ev => {
+        if (!ev.date) return false;
+        const d = new Date(ev.date + 'T00:00:00');
+        return d.getFullYear() === calYear && d.getMonth() === calMonth;
+      })
+      .map(ev => parseInt(ev.date.split('-')[2]))
+  );
+
+  let html = '';
+  for (let i = 0; i < firstDay; i++) html += '<div class="cal-cell empty"></div>';
+  for (let d = 1; d <= daysInMonth; d++) {
+    const isToday = today.getFullYear() === calYear && today.getMonth() === calMonth && today.getDate() === d;
+    const hasEv   = eventDays.has(d);
+    html += `<div class="cal-cell${isToday ? ' today' : ''}${hasEv ? ' has-event' : ''}" onclick="jumpToDay(${d})">${d}${hasEv ? '<span class="cal-dot"></span>' : ''}</div>`;
+  }
+  grid.innerHTML = html;
+}
+
+function jumpToDay(day) {
+  const dateStr = calYear + '-' + String(calMonth + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+  const el = document.getElementById('day-' + dateStr);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ---- 日別一覧 ----
+
+function renderDayList() {
+  const container = document.getElementById('eventsDayList');
+  if (!container) return;
+
+  const prefix = calYear + '-' + String(calMonth + 1).padStart(2, '0');
+  const monthEvents = allEvents.filter(ev => ev.date && ev.date.startsWith(prefix));
+
+  if (monthEvents.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-icon">📅</div><p>この月のイベントはありません</p></div>';
     return;
   }
-  container.innerHTML = filtered.map(ev => renderEventCard(ev.id, ev)).join('');
-}
 
-function filterEvents(cat, btn) {
-  currentFilter = cat;
-  document.querySelectorAll('.tag-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  renderEventsList();
+  // 日付でグループ化
+  const groups = {};
+  monthEvents.forEach(ev => {
+    const key = ev.date;
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(ev);
+  });
+
+  const sortedDates = Object.keys(groups).sort();
+  container.innerHTML = sortedDates.map(dateStr => {
+    const d   = new Date(dateStr + 'T00:00:00');
+    const mon = d.getMonth() + 1;
+    const day = d.getDate();
+    const wd  = ['日','月','火','水','木','金','土'][d.getDay()];
+    const items = groups[dateStr].map(ev => {
+      const timePart = ev.time || ev.startTime || '';
+      const feePart  = ev.fee ? ev.fee.toLocaleString() + '円' : '';
+      return `
+        <div class="day-event-item">
+          <div class="day-event-title">・${escHtml(ev.title)}</div>
+          ${timePart ? `<div class="day-event-meta">${escHtml(timePart)} 開始</div>` : ''}
+          ${feePart  ? `<div class="day-event-meta">参加費 ${feePart}</div>` : ''}
+          ${ev.description ? `<div class="day-event-desc">${escHtml(ev.description)}</div>` : ''}
+        </div>`;
+    }).join('');
+
+    return `
+      <div class="day-group" id="day-${dateStr}">
+        <div class="day-group-header">${mon}月${day}日（${wd}）</div>
+        ${items}
+      </div>`;
+  }).join('');
 }
 
 function renderEventCard(id, ev) {
-  const joined = (ev.participants || []).includes(currentUser?.uid || '');
-  const count  = (ev.participants || []).length;
-
   let month = '', day = '', wd = '';
   if (ev.date) {
     const d = new Date(ev.date + 'T00:00:00');
@@ -257,7 +336,7 @@ function renderEventCard(id, ev) {
   }
 
   return `
-    <div class="event-card ${joined ? 'joined' : ''} fade-in" onclick="openEventModal('${id}')">
+    <div class="event-card fade-in">
       <div class="event-date-col">
         <div class="event-date-month">${month}</div>
         <div class="event-date-day">${day || '—'}</div>
@@ -266,12 +345,8 @@ function renderEventCard(id, ev) {
       <div class="event-info-col">
         <div class="event-card-title">${escHtml(ev.title)}</div>
         <div class="event-card-meta">
-          ${ev.startTime ? `<span>${ev.startTime}〜${ev.endTime || ''}</span>` : ''}
+          ${ev.time || ev.startTime ? `<span>${escHtml(ev.time || ev.startTime)}</span>` : ''}
           ${ev.fee ? `<span>${ev.fee.toLocaleString()}円</span>` : '<span>無料</span>'}
-        </div>
-        <div class="event-card-footer">
-          <span class="participants-count">👥 ${count}${ev.capacity > 0 ? ' / ' + ev.capacity : ''}名</span>
-          <span class="badge ${joined ? 'badge-green' : 'badge-gray'}">${joined ? '参加予定' : '未参加'}</span>
         </div>
       </div>
     </div>`;
@@ -521,13 +596,6 @@ async function checkAndAwardBadges() {
 // チャット
 // ========================================
 
-function switchChatRoom(roomId, btn) {
-  currentChatRoom = roomId;
-  document.querySelectorAll('.chat-room-tabs .tag-btn').forEach(b => b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
-  loadChat();
-}
-
 function loadChat() {
   if (chatUnsubscribe) {
     chatUnsubscribe();
@@ -535,12 +603,10 @@ function loadChat() {
   }
 
   const container = document.getElementById('chatMessages');
-  container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  container.innerHTML = '';
 
   chatUnsubscribe = db
     .collection('chats')
-    .doc(currentChatRoom)
-    .collection('messages')
     .orderBy('createdAt', 'asc')
     .limit(100)
     .onSnapshot(snap => {
@@ -554,7 +620,7 @@ function renderChatMessages(docs) {
   const container = document.getElementById('chatMessages');
   const wasAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 60;
 
-  const visible = docs.filter(d => !d.data().deleted);
+  const visible = docs;
 
   if (visible.length === 0) {
     container.innerHTML = '<div class="chat-system-msg">まだメッセージがありません。最初のメッセージを送ってみましょう！</div>';
@@ -563,7 +629,7 @@ function renderChatMessages(docs) {
 
   container.innerHTML = visible.map(doc => {
     const m   = doc.data();
-    const own = m.userId === currentUser?.uid;
+    const own = m.uid === currentUser?.uid;
     const icon = m.userIcon || '👤';
     const canDelete = own || (currentUserData?.role === 'admin');
     const timeStr = m.createdAt ? formatTimeOnly(m.createdAt) : '';
@@ -572,7 +638,7 @@ function renderChatMessages(docs) {
       <div class="chat-msg ${own ? 'own' : ''}">
         ${!own ? `<div class="chat-avatar">${escHtml(icon)}</div>` : ''}
         <div class="chat-content">
-          ${!own ? `<div class="chat-name">${escHtml(m.userName || '—')}</div>` : ''}
+          ${!own ? `<div class="chat-name">${escHtml(m.name || '—')}</div>` : ''}
           <div class="chat-bubble">${escHtml(m.message)}</div>
           <div class="chat-time-row">
             <span class="chat-time">${timeStr}</span>
@@ -601,15 +667,12 @@ async function sendChatMessage() {
   try {
     await db
       .collection('chats')
-      .doc(currentChatRoom)
-      .collection('messages')
       .add({
-        userId:   currentUser.uid,
-        userName: currentUserData.name,
-        userIcon: currentUserData.iconUrl || '👤',
+        uid:       currentUser.uid,
+        name:      currentUserData.name,
+        userIcon:  currentUserData.iconUrl || '👤',
         message,
         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        deleted: false,
       });
   } catch (e) {
     showToast('送信に失敗しました', 'error');
@@ -623,12 +686,7 @@ async function sendChatMessage() {
 async function deleteChatMessage(msgId) {
   if (!confirm('このメッセージを削除しますか？')) return;
   try {
-    await db
-      .collection('chats')
-      .doc(currentChatRoom)
-      .collection('messages')
-      .doc(msgId)
-      .update({ deleted: true });
+    await db.collection('chats').doc(msgId).delete();
   } catch (e) {
     showToast('削除に失敗しました', 'error');
   }
@@ -654,7 +712,6 @@ function autoResizeChatInput(el) {
 function openEditProfile() {
   selectedIcon = currentUserData?.iconUrl || '👤';
 
-  // アイコンピッカー生成
   const grid = document.getElementById('iconPickerGrid');
   grid.innerHTML = ICON_LIST.map(icon => `
     <div class="icon-opt ${icon === selectedIcon ? 'selected' : ''}"
@@ -662,6 +719,8 @@ function openEditProfile() {
   `).join('');
 
   document.getElementById('editName').value = currentUserData?.name || '';
+  const bioEl = document.getElementById('editBio');
+  if (bioEl) bioEl.value = currentUserData?.bio || '';
   document.getElementById('editProfileModal').classList.add('open');
 }
 
@@ -678,6 +737,8 @@ function closeEditProfile() {
 async function saveProfile() {
   const name = document.getElementById('editName').value.trim();
   const icon = selectedIcon || '👤';
+  const bioEl = document.getElementById('editBio');
+  const bio  = bioEl ? bioEl.value.trim() : '';
 
   if (!name) { showToast('名前を入力してください', 'error'); return; }
   if (name.length > 20) { showToast('名前は20文字以内で入力してください', 'error'); return; }
@@ -690,10 +751,12 @@ async function saveProfile() {
     await db.collection('users').doc(currentUser.uid).update({
       name,
       iconUrl: icon,
+      bio,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
     currentUserData.name    = name;
     currentUserData.iconUrl = icon;
+    currentUserData.bio     = bio;
 
     showToast('プロフィールを更新しました', 'success');
     closeEditProfile();
@@ -731,6 +794,17 @@ async function loadMyPage() {
   document.getElementById('mypageChips').textContent       = d.chips || 0;
   document.getElementById('mypageCheckins').textContent    = d.checkInCount || 0;
   document.getElementById('mypageEventJoins').textContent  = d.eventJoinCount || 0;
+
+  const bioWrap = document.getElementById('mypageBioWrap');
+  if (bioWrap) {
+    const bio = d.bio || '';
+    if (bio) {
+      bioWrap.textContent = bio;
+      bioWrap.style.display = '';
+    } else {
+      bioWrap.style.display = 'none';
+    }
+  }
 
   const earned = d.badges || [];
   document.getElementById('mypageBadges').innerHTML = BADGES_DEF.map(b => `
