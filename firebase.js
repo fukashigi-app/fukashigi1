@@ -5,12 +5,14 @@
 // プロジェクトを作成し、以下の値を設定してください。
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDt2LBQ7W_k2XGOYw273Aoz72-sY2i4z6k",
-  authDomain: "YOUR_AUTH_DOMAIN",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID"
+ const firebaseConfig = {
+  apiKey: "AIzaSyDt2LBQ7W_k2XGOYw273Aoz72-sY2i4z6k", 
+  authDomain: "fukashigi-1.firebaseapp.com",
+  projectId: "fukashigi-1",
+  storageBucket: "fukashigi-1.firebasestorage.app",
+  messagingSenderId: "130242994746",
+  appId: "1:130242994746:web:0dd04ccf2f0c74dbeb8b03",
+  measurementId: "G-7S8QM44H4Q"
 };
 
 // Firebase 初期化
