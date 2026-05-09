@@ -9,6 +9,21 @@ let currentFilter   = 'all';
 let qrScanner       = null;
 let selectedEvent   = null;
 
+// チャット
+let chatUnsubscribe  = null;
+let currentChatRoom  = 'global';
+
+// プロフィール編集
+let selectedIcon = null;
+
+const ICON_LIST = [
+  '👤','😎','🤩','👑','🎭','🦊',
+  '🐺','🦁','🐯','🦄','🐉','👾',
+  '🤖','👻','🎃','💀','⚡','🔥',
+  '💎','🌙','⭐','🌟','💫','🎯',
+  '🃏','🎲','⚔️','🛡','🔮','🗝',
+];
+
 // ========================================
 // 初期化・認証
 // ========================================
@@ -28,7 +43,7 @@ async function loadUserData() {
       uid: currentUser.uid,
       name: currentUser.displayName || currentUser.email.split('@')[0],
       email: currentUser.email,
-      iconUrl: '',
+      iconUrl: '👤',
       memberNumber: 'F' + String(Date.now()).slice(-6),
       role: 'member',
       points: 0, totalPoints: 0, chips: 0,
@@ -42,7 +57,6 @@ async function loadUserData() {
     currentUserData = data;
   } else {
     currentUserData = doc.data();
-    // ランクと称号を自動更新
     const rankInfo = calcRank(currentUserData.checkInCount || 0);
     const title    = calcTitle(currentUserData.checkInCount || 0, currentUserData.eventJoinCount || 0);
     if (currentUserData.rank !== rankInfo.rank || currentUserData.title !== title) {
@@ -55,6 +69,7 @@ async function loadUserData() {
 }
 
 function doLogout() {
+  if (chatUnsubscribe) chatUnsubscribe();
   auth.signOut().then(() => { window.location.href = 'index.html'; });
 }
 
@@ -67,7 +82,9 @@ function switchTab(tab) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('tab-' + tab).classList.add('active');
   document.getElementById('nav-' + tab).classList.add('active');
+
   if (tab === 'mypage') loadMyPage();
+  if (tab === 'chat')   loadChat();
 }
 
 // ========================================
@@ -80,29 +97,21 @@ function loadHome() {
 
   document.getElementById('headerUserName').textContent = d.name;
   document.getElementById('homeUserName').textContent   = d.name;
+  document.getElementById('homeAvatar').textContent     = d.iconUrl || '👤';
 
-  // ランク・称号バッジ
   const rankInfo = calcRank(d.checkInCount || 0);
   document.getElementById('homeRankRow').innerHTML = `
     <span class="badge badge-gold" style="font-size:11px;">${rankInfo.rank}</span>
     <span class="badge badge-gray" style="font-size:11px;">${d.title || '新参者'}</span>
   `;
 
-  // スタッツ
   document.getElementById('statPoints').textContent   = (d.points || 0).toLocaleString();
   document.getElementById('statCheckins').textContent = d.checkInCount || 0;
   document.getElementById('statChips').textContent    = d.chips || 0;
 
-  // 今日チェックイン済みか
   checkTodayCheckIn();
-
-  // 今日の来店メンバー
   loadTodayMembers();
-
-  // お知らせ
   loadNotices();
-
-  // 直近イベント
   loadHomeEvents();
 }
 
@@ -137,10 +146,10 @@ async function loadTodayMembers() {
     }
     container.innerHTML = snap.docs.map(doc => {
       const c = doc.data();
-      const initial = (c.userName || '?').charAt(0);
+      const icon = c.userIcon || (c.userName || '?').charAt(0);
       return `
         <div class="today-member-item">
-          <div class="today-member-avatar">${initial}</div>
+          <div class="today-member-avatar">${icon}</div>
           <div class="today-member-name">${escHtml(c.userName || '—')}</div>
         </div>`;
     }).join('');
@@ -235,12 +244,10 @@ function filterEvents(cat, btn) {
   renderEventsList();
 }
 
-// イベントカード（日付を左に大きく表示）
 function renderEventCard(id, ev) {
   const joined = (ev.participants || []).includes(currentUser?.uid || '');
   const count  = (ev.participants || []).length;
 
-  // 日付パース
   let month = '', day = '', wd = '';
   if (ev.date) {
     const d = new Date(ev.date + 'T00:00:00');
@@ -301,9 +308,42 @@ async function openEventModal(eventId) {
             onclick="toggleJoin('${eventId}', ${joined})">
       ${joined ? '参加キャンセル' : '参加する'}
     </button>
+    <div class="section-title" style="margin-top:24px;">管理者からの投稿</div>
+    <div id="eventPostsList"><div class="loading"><div class="spinner"></div></div></div>
   `;
 
   document.getElementById('eventModal').classList.add('open');
+  loadEventPosts(eventId);
+}
+
+async function loadEventPosts(eventId) {
+  const container = document.getElementById('eventPostsList');
+  if (!container) return;
+  try {
+    const snap = await db.collection('events').doc(eventId)
+      .collection('posts')
+      .orderBy('createdAt', 'desc')
+      .limit(20).get();
+
+    if (snap.empty) {
+      container.innerHTML = '<div style="font-size:13px;color:var(--text-muted);padding:8px 0 4px;">投稿はありません</div>';
+      return;
+    }
+    container.innerHTML = snap.docs.map(doc => {
+      const p = doc.data();
+      return `
+        <div class="event-post-card">
+          <div class="event-post-admin-label">📌 管理者投稿</div>
+          <div class="event-post-content">${escHtml(p.content)}</div>
+          <div class="event-post-meta">
+            <span>${escHtml(p.createdByName || '管理者')}</span>
+            <span>${formatDate(p.createdAt)}</span>
+          </div>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    container.innerHTML = '<div style="font-size:13px;color:var(--text-muted);">読み込みエラー</div>';
+  }
 }
 
 function dRow(label, val) {
@@ -395,11 +435,12 @@ async function onQRSuccess(text) {
     return;
   }
 
-  const batch     = db.batch();
+  const batch      = db.batch();
   const checkinRef = db.collection('checkins').doc();
   batch.set(checkinRef, {
     userId:      currentUser.uid,
     userName:    currentUserData.name,
+    userIcon:    currentUserData.iconUrl || '👤',
     dateStr:     today,
     checkedInAt: firebase.firestore.FieldValue.serverTimestamp(),
     eventId:     '',
@@ -477,6 +518,196 @@ async function checkAndAwardBadges() {
 }
 
 // ========================================
+// チャット
+// ========================================
+
+function switchChatRoom(roomId, btn) {
+  currentChatRoom = roomId;
+  document.querySelectorAll('.chat-room-tabs .tag-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  loadChat();
+}
+
+function loadChat() {
+  if (chatUnsubscribe) {
+    chatUnsubscribe();
+    chatUnsubscribe = null;
+  }
+
+  const container = document.getElementById('chatMessages');
+  container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+  chatUnsubscribe = db
+    .collection('chats')
+    .doc(currentChatRoom)
+    .collection('messages')
+    .orderBy('createdAt', 'asc')
+    .limit(100)
+    .onSnapshot(snap => {
+      renderChatMessages(snap.docs);
+    }, err => {
+      container.innerHTML = '<div class="chat-system-msg">読み込みエラー</div>';
+    });
+}
+
+function renderChatMessages(docs) {
+  const container = document.getElementById('chatMessages');
+  const wasAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 60;
+
+  const visible = docs.filter(d => !d.data().deleted);
+
+  if (visible.length === 0) {
+    container.innerHTML = '<div class="chat-system-msg">まだメッセージがありません。最初のメッセージを送ってみましょう！</div>';
+    return;
+  }
+
+  container.innerHTML = visible.map(doc => {
+    const m   = doc.data();
+    const own = m.userId === currentUser?.uid;
+    const icon = m.userIcon || '👤';
+    const canDelete = own || (currentUserData?.role === 'admin');
+    const timeStr = m.createdAt ? formatTimeOnly(m.createdAt) : '';
+
+    return `
+      <div class="chat-msg ${own ? 'own' : ''}">
+        ${!own ? `<div class="chat-avatar">${escHtml(icon)}</div>` : ''}
+        <div class="chat-content">
+          ${!own ? `<div class="chat-name">${escHtml(m.userName || '—')}</div>` : ''}
+          <div class="chat-bubble">${escHtml(m.message)}</div>
+          <div class="chat-time-row">
+            <span class="chat-time">${timeStr}</span>
+            ${canDelete ? `<button class="chat-delete" onclick="deleteChatMessage('${doc.id}')">削除</button>` : ''}
+          </div>
+        </div>
+        ${own ? `<div class="chat-avatar">${escHtml(icon)}</div>` : ''}
+      </div>`;
+  }).join('');
+
+  if (wasAtBottom) {
+    container.scrollTop = container.scrollHeight;
+  }
+}
+
+async function sendChatMessage() {
+  const input = document.getElementById('chatInput');
+  const message = input.value.trim();
+  if (!message) return;
+
+  const btn = document.getElementById('chatSendBtn');
+  btn.disabled = true;
+  input.value = '';
+  autoResizeChatInput(input);
+
+  try {
+    await db
+      .collection('chats')
+      .doc(currentChatRoom)
+      .collection('messages')
+      .add({
+        userId:   currentUser.uid,
+        userName: currentUserData.name,
+        userIcon: currentUserData.iconUrl || '👤',
+        message,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        deleted: false,
+      });
+  } catch (e) {
+    showToast('送信に失敗しました', 'error');
+    input.value = message;
+  } finally {
+    btn.disabled = false;
+    input.focus();
+  }
+}
+
+async function deleteChatMessage(msgId) {
+  if (!confirm('このメッセージを削除しますか？')) return;
+  try {
+    await db
+      .collection('chats')
+      .doc(currentChatRoom)
+      .collection('messages')
+      .doc(msgId)
+      .update({ deleted: true });
+  } catch (e) {
+    showToast('削除に失敗しました', 'error');
+  }
+}
+
+function chatKeyDown(e) {
+  // PC: Enter で送信、Shift+Enter で改行
+  if (e.key === 'Enter' && !e.shiftKey && window.innerWidth >= 600) {
+    e.preventDefault();
+    sendChatMessage();
+  }
+}
+
+function autoResizeChatInput(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 100) + 'px';
+}
+
+// ========================================
+// プロフィール編集
+// ========================================
+
+function openEditProfile() {
+  selectedIcon = currentUserData?.iconUrl || '👤';
+
+  // アイコンピッカー生成
+  const grid = document.getElementById('iconPickerGrid');
+  grid.innerHTML = ICON_LIST.map(icon => `
+    <div class="icon-opt ${icon === selectedIcon ? 'selected' : ''}"
+         onclick="selectIcon('${icon}', this)">${icon}</div>
+  `).join('');
+
+  document.getElementById('editName').value = currentUserData?.name || '';
+  document.getElementById('editProfileModal').classList.add('open');
+}
+
+function selectIcon(icon, el) {
+  selectedIcon = icon;
+  document.querySelectorAll('.icon-opt').forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function closeEditProfile() {
+  document.getElementById('editProfileModal').classList.remove('open');
+}
+
+async function saveProfile() {
+  const name = document.getElementById('editName').value.trim();
+  const icon = selectedIcon || '👤';
+
+  if (!name) { showToast('名前を入力してください', 'error'); return; }
+  if (name.length > 20) { showToast('名前は20文字以内で入力してください', 'error'); return; }
+
+  const btn = document.getElementById('saveProfileBtn');
+  btn.disabled = true;
+  btn.textContent = '保存中…';
+
+  try {
+    await db.collection('users').doc(currentUser.uid).update({
+      name,
+      iconUrl: icon,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    currentUserData.name    = name;
+    currentUserData.iconUrl = icon;
+
+    showToast('プロフィールを更新しました', 'success');
+    closeEditProfile();
+    loadHome();
+    loadMyPage();
+  } catch (e) {
+    showToast('保存に失敗しました', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '保存する';
+  }
+}
+
+// ========================================
 // マイページ
 // ========================================
 
@@ -485,6 +716,7 @@ async function loadMyPage() {
   currentUserData = doc.data();
   const d   = currentUserData;
 
+  document.getElementById('mypageAvatar').textContent   = d.iconUrl || '👤';
   document.getElementById('mypageName').textContent     = d.name;
   document.getElementById('mypageMemberNo').textContent = 'MEMBER #' + (d.memberNumber || '—');
 
@@ -494,13 +726,12 @@ async function loadMyPage() {
     <span class="badge badge-gray" style="margin-left:6px;">${d.title || '新参者'}</span>
   `;
 
-  document.getElementById('mypagePoints').textContent     = (d.points || 0).toLocaleString();
+  document.getElementById('mypagePoints').textContent      = (d.points || 0).toLocaleString();
   document.getElementById('mypageTotalPoints').textContent = (d.totalPoints || 0).toLocaleString();
-  document.getElementById('mypageChips').textContent      = d.chips || 0;
-  document.getElementById('mypageCheckins').textContent   = d.checkInCount || 0;
-  document.getElementById('mypageEventJoins').textContent = d.eventJoinCount || 0;
+  document.getElementById('mypageChips').textContent       = d.chips || 0;
+  document.getElementById('mypageCheckins').textContent    = d.checkInCount || 0;
+  document.getElementById('mypageEventJoins').textContent  = d.eventJoinCount || 0;
 
-  // バッジ
   const earned = d.badges || [];
   document.getElementById('mypageBadges').innerHTML = BADGES_DEF.map(b => `
     <div class="badge-item ${earned.includes(b.id) ? 'earned' : ''}">
@@ -545,6 +776,12 @@ async function loadPointLogs() {
 // ユーティリティ
 // ========================================
 
+function formatTimeOnly(ts) {
+  if (!ts) return '';
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+}
+
 function showToast(msg, type = 'info') {
   const container = document.getElementById('toastContainer');
   const el = document.createElement('div');
@@ -563,9 +800,13 @@ function escHtml(str) {
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// モーダル外クリックで閉じる
 document.getElementById('eventModal').addEventListener('click', function(e) {
   if (e.target === this) closeEventModal();
 });
 document.getElementById('qrModal').addEventListener('click', function(e) {
   if (e.target === this) closeQRScanner();
+});
+document.getElementById('editProfileModal').addEventListener('click', function(e) {
+  if (e.target === this) closeEditProfile();
 });

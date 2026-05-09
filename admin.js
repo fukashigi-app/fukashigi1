@@ -5,7 +5,11 @@
 let adminUser     = null;
 let adminUserData = null;
 let allMembers    = [];
-let allMembersFiltered = [];
+let allMembersFiltered  = [];
+let allAccounts   = [];
+let allAccountsFiltered = [];
+let accountRoleFilter   = 'all';
+let allAdminEvents = [];
 let currentSection = 'dashboard';
 
 // ========================================
@@ -45,13 +49,15 @@ function switchSection(sec, btn) {
   currentSection = sec;
 
   const loaders = {
-    dashboard: loadDashboard,
-    members:   loadMembers,
-    events:    loadAdminEvents,
-    checkins:  loadCheckinHistory,
-    points:    () => { loadPointLog(); loadMemberSelect(); },
-    notices:   loadNotices,
-    qr:        generateQR,
+    dashboard:  loadDashboard,
+    members:    loadMembers,
+    accounts:   loadAccounts,
+    events:     loadAdminEvents,
+    eventposts: loadEventPostsSection,
+    checkins:   loadCheckinHistory,
+    points:     () => { loadPointLog(); loadMemberSelect(); },
+    notices:    loadNotices,
+    qr:         generateQR,
   };
   if (loaders[sec]) loaders[sec]();
 }
@@ -71,12 +77,11 @@ async function loadDashboard() {
     const today = todayStr();
     const todayCheckins = checkinsSnap.docs.filter(d => d.data().dateStr === today).length;
 
-    document.getElementById('dashMembers').textContent      = membersSnap.size;
-    document.getElementById('dashEvents').textContent       = eventsSnap.size;
-    document.getElementById('dashCheckins').textContent     = checkinsSnap.size;
+    document.getElementById('dashMembers').textContent       = membersSnap.size;
+    document.getElementById('dashEvents').textContent        = eventsSnap.size;
+    document.getElementById('dashCheckins').textContent      = checkinsSnap.size;
     document.getElementById('dashTodayCheckins').textContent = todayCheckins;
 
-    // 直近イベント
     const events = eventsSnap.docs
       .map(d => ({ id: d.id, ...d.data() }))
       .sort((a,b) => (b.date || '').localeCompare(a.date || ''))
@@ -141,9 +146,10 @@ function renderMembers() {
   }
   container.innerHTML = allMembersFiltered.map(m => {
     const rankInfo = calcRank(m.checkInCount || 0);
+    const icon = m.iconUrl || '👤';
     return `
       <div class="member-row" onclick="openMemberModal('${m.id}')">
-        <div class="member-avatar-sm">👤</div>
+        <div class="member-avatar-sm">${escHtml(icon)}</div>
         <div class="member-info">
           <div class="member-name">${escHtml(m.name || '—')}</div>
           <div class="member-sub">
@@ -166,6 +172,7 @@ function openMemberModal(uid) {
   const m = allMembers.find(x => x.id === uid);
   if (!m) return;
   const rankInfo = calcRank(m.checkInCount || 0);
+  const icon = m.iconUrl || '👤';
 
   document.getElementById('memberModalTitle').textContent = m.name || '—';
   document.getElementById('memberModalContent').innerHTML = `
@@ -185,18 +192,16 @@ function openMemberModal(uid) {
       ${adminRow('イベント参加', (m.eventJoinCount||0) + ' 回')}
     </div>
 
-    <!-- 権限変更 -->
     <div class="point-form" style="margin-bottom:12px;">
       <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--gold);">権限変更</div>
       <div style="display:flex;gap:8px;">
-        <button class="btn btn-outline btn-sm ${m.role!=='admin'?'':'btn-ghost'}"
+        <button class="btn btn-outline btn-sm ${m.role!=='admin'?'btn-ghost':''}"
                 onclick="changeRole('${uid}','member')">一般メンバー</button>
         <button class="btn btn-gold btn-sm ${m.role==='admin'?'':'btn-outline'}"
                 onclick="changeRole('${uid}','admin')">管理者に変更</button>
       </div>
     </div>
 
-    <!-- クイックポイント付与 -->
     <div class="point-form">
       <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--gold);">ポイント付与</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
@@ -254,6 +259,172 @@ async function quickApplyPoints(uid) {
 }
 
 // ========================================
+// アカウント管理
+// ========================================
+
+async function loadAccounts() {
+  const container = document.getElementById('accountList');
+  try {
+    const snap = await db.collection('users').orderBy('createdAt', 'desc').get();
+    allAccounts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    allAccountsFiltered = [...allAccounts];
+    renderAccounts();
+  } catch (e) {
+    container.innerHTML = '<div class="empty-state"><p>読み込みエラー</p></div>';
+  }
+}
+
+function filterAccounts() {
+  const q = (document.getElementById('accountSearch').value || '').trim().toLowerCase();
+  let filtered = q
+    ? allAccounts.filter(m => (m.name || '').toLowerCase().includes(q) || (m.email || '').includes(q))
+    : [...allAccounts];
+
+  if (accountRoleFilter === 'admin') {
+    filtered = filtered.filter(m => m.role === 'admin');
+  } else if (accountRoleFilter === 'member') {
+    filtered = filtered.filter(m => m.role !== 'admin' && !m.disabled);
+  } else if (accountRoleFilter === 'disabled') {
+    filtered = filtered.filter(m => m.disabled);
+  }
+
+  allAccountsFiltered = filtered;
+  renderAccounts();
+}
+
+function filterAccountRole(role, btn) {
+  accountRoleFilter = role;
+  document.querySelectorAll('#sec-accounts .tag-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  filterAccounts();
+}
+
+function renderAccounts() {
+  const container = document.getElementById('accountList');
+  if (allAccountsFiltered.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-icon">👤</div><p>該当するアカウントがありません</p></div>';
+    return;
+  }
+  container.innerHTML = allAccountsFiltered.map(m => {
+    const icon = m.iconUrl || '👤';
+    const isDisabled = m.disabled || false;
+    return `
+      <div class="account-row" onclick="openAccountModal('${m.id}')">
+        <div class="account-status-dot ${isDisabled ? 'disabled' : ''}"></div>
+        <div class="member-avatar-sm">${escHtml(icon)}</div>
+        <div class="member-info">
+          <div class="member-name">${escHtml(m.name || '—')}</div>
+          <div class="account-email">${escHtml(m.email || '—')}</div>
+          <div class="member-sub" style="margin-top:3px;">
+            <span class="badge badge-${m.role==='admin'?'gold':'blue'}">${m.role==='admin'?'管理者':'メンバー'}</span>
+            ${isDisabled ? '<span class="badge badge-gray" style="margin-left:4px;">無効</span>' : ''}
+            <span style="margin-left:6px;font-size:11px;color:var(--text-muted);">登録: ${formatDateOnly(m.createdAt)}</span>
+          </div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;">
+          <div style="font-size:15px;font-weight:700;color:var(--gold);font-family:'Inter',sans-serif;">${(m.points||0).toLocaleString()}</div>
+          <div style="font-size:10px;color:var(--text-muted);font-family:'Inter',sans-serif;">pt</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function openAccountModal(uid) {
+  const m = allAccounts.find(x => x.id === uid);
+  if (!m) return;
+  const isDisabled = m.disabled || false;
+
+  document.getElementById('accountModalTitle').textContent = m.name || '—';
+  document.getElementById('accountModalContent').innerHTML = `
+    <div class="divider"></div>
+    <div class="detail-list" style="margin-bottom:16px;">
+      ${adminRow('メールアドレス', m.email || '—')}
+      ${adminRow('会員番号', m.memberNumber || '—')}
+      ${adminRow('権限', m.role === 'admin' ? '管理者' : '一般メンバー')}
+      ${adminRow('ステータス', isDisabled ? '無効' : '有効')}
+      ${adminRow('登録日', formatDateOnly(m.createdAt))}
+      ${adminRow('来店回数', (m.checkInCount||0) + ' 回')}
+      ${adminRow('現在ポイント', (m.points||0).toLocaleString() + ' pt')}
+    </div>
+
+    <!-- 権限変更 -->
+    <div class="point-form" style="margin-bottom:12px;">
+      <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--gold);">権限</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-outline btn-sm" onclick="changeRoleFromAccount('${uid}','member')">一般メンバー</button>
+        <button class="btn btn-gold btn-sm" onclick="changeRoleFromAccount('${uid}','admin')">管理者に変更</button>
+      </div>
+    </div>
+
+    <!-- アカウント有効/無効 -->
+    <div class="point-form" style="margin-bottom:12px;">
+      <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--gold);">アカウント状態</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-outline btn-sm" onclick="setAccountDisabled('${uid}', false)">有効にする</button>
+        <button class="btn btn-danger btn-sm" onclick="setAccountDisabled('${uid}', true)">無効にする</button>
+      </div>
+      <p style="font-size:11px;color:var(--text-muted);margin-top:8px;line-height:1.6;">
+        無効にするとメンバーがアプリを使用できなくなります（Firestore上のフラグ管理）
+      </p>
+    </div>
+
+    <!-- パスワードリセット -->
+    <div class="point-form">
+      <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--gold);">パスワードリセット</div>
+      <button class="btn btn-outline btn-block btn-sm" onclick="sendPasswordReset('${escHtml(m.email || '')}')">
+        パスワードリセットメールを送信
+      </button>
+    </div>
+  `;
+  document.getElementById('accountModal').classList.add('open');
+}
+
+function closeAccountModal() {
+  document.getElementById('accountModal').classList.remove('open');
+}
+
+async function changeRoleFromAccount(uid, role) {
+  if (!confirm(`権限を「${role==='admin'?'管理者':'一般メンバー'}」に変更しますか？`)) return;
+  try {
+    await db.collection('users').doc(uid).update({ role });
+    const idx = allAccounts.findIndex(m => m.id === uid);
+    if (idx >= 0) allAccounts[idx].role = role;
+    closeAccountModal();
+    renderAccounts();
+    showToast('権限を変更しました', 'success');
+  } catch (e) {
+    showToast('エラー: ' + e.message, 'error');
+  }
+}
+
+async function setAccountDisabled(uid, disabled) {
+  const label = disabled ? '無効' : '有効';
+  if (!confirm(`このアカウントを${label}にしますか？`)) return;
+  try {
+    await db.collection('users').doc(uid).update({ disabled });
+    const idx = allAccounts.findIndex(m => m.id === uid);
+    if (idx >= 0) allAccounts[idx].disabled = disabled;
+    closeAccountModal();
+    renderAccounts();
+    showToast(`アカウントを${label}にしました`, 'success');
+  } catch (e) {
+    showToast('エラー: ' + e.message, 'error');
+  }
+}
+
+async function sendPasswordReset(email) {
+  if (!email) { showToast('メールアドレスが不明です', 'error'); return; }
+  if (!confirm(`${email} にパスワードリセットメールを送信しますか？`)) return;
+  try {
+    await auth.sendPasswordResetEmail(email);
+    showToast('パスワードリセットメールを送信しました', 'success');
+    closeAccountModal();
+  } catch (e) {
+    showToast('送信に失敗しました: ' + e.message, 'error');
+  }
+}
+
+// ========================================
 // イベント管理
 // ========================================
 
@@ -261,13 +432,13 @@ async function loadAdminEvents() {
   const container = document.getElementById('adminEventsList');
   try {
     const snap = await db.collection('events').orderBy('date', 'desc').get();
-    const events = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    allAdminEvents = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-    if (events.length === 0) {
+    if (allAdminEvents.length === 0) {
       container.innerHTML = '<div class="empty-state"><div class="empty-icon">📅</div><p>イベントがありません</p></div>';
       return;
     }
-    container.innerHTML = events.map(ev => {
+    container.innerHTML = allAdminEvents.map(ev => {
       const d = ev.date ? new Date(ev.date + 'T00:00:00') : null;
       const month = d ? (d.getMonth()+1)+'月' : '';
       const day   = d ? d.getDate() : '—';
@@ -289,7 +460,7 @@ async function loadAdminEvents() {
             <span class="badge ${ev.isPublic ? 'badge-green' : 'badge-gray'}">${ev.isPublic ? '公開' : '非公開'}</span>
           </div>
         </div>
-        <div style="display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--border);">
+        <div style="display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--border);flex-wrap:wrap;">
           <button class="btn btn-outline btn-sm" onclick="toggleEventPublic('${ev.id}', ${ev.isPublic})">
             ${ev.isPublic ? '非公開にする' : '公開する'}
           </button>
@@ -305,7 +476,6 @@ async function loadAdminEvents() {
 function showCreateEventForm() {
   const form = document.getElementById('createEventForm');
   form.style.display = form.style.display === 'none' ? '' : 'none';
-  // 今日の日付をデフォルトに
   if (!document.getElementById('evDate').value) {
     document.getElementById('evDate').value = new Date().toISOString().slice(0,10);
   }
@@ -337,7 +507,6 @@ async function createEvent() {
     await db.collection('events').add(data);
     showToast('イベントを作成しました', 'success');
     document.getElementById('createEventForm').style.display = 'none';
-    // フォームリセット
     ['evTitle','evDate','evStartTime','evEndTime','evFee','evCapacity','evDescription'].forEach(id => {
       document.getElementById(id).value = '';
     });
@@ -369,6 +538,141 @@ async function deleteEvent(id) {
 }
 
 // ========================================
+// イベント投稿管理
+// ========================================
+
+async function loadEventPostsSection() {
+  await loadEventSelectOptions();
+  await loadEventPostsAdmin();
+}
+
+async function loadEventSelectOptions() {
+  try {
+    const snap = await db.collection('events').orderBy('date', 'desc').get();
+    const events = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    const opts = events.map(ev => `<option value="${ev.id}">${escHtml(ev.title)} (${ev.date || '日付未定'})</option>`).join('');
+
+    const sel1 = document.getElementById('postEventSelect');
+    const sel2 = document.getElementById('postFilterEvent');
+    if (sel1) sel1.innerHTML = '<option value="">イベントを選択…</option>' + opts;
+    if (sel2) sel2.innerHTML = '<option value="">すべてのイベント</option>' + opts;
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function submitEventPost() {
+  const eventId = document.getElementById('postEventSelect').value;
+  const content = document.getElementById('postContent').value.trim();
+
+  if (!eventId) { showToast('イベントを選択してください', 'error'); return; }
+  if (!content) { showToast('内容を入力してください', 'error'); return; }
+
+  try {
+    await db.collection('events').doc(eventId)
+      .collection('posts')
+      .add({
+        content,
+        createdBy:     adminUserData.uid || adminUser.uid,
+        createdByName: adminUserData.name || '管理者',
+        createdAt:     firebase.firestore.FieldValue.serverTimestamp(),
+      });
+
+    showToast('投稿しました', 'success');
+    document.getElementById('postContent').value = '';
+    loadEventPostsAdmin();
+  } catch (e) {
+    showToast('エラー: ' + e.message, 'error');
+  }
+}
+
+async function loadEventPostsAdmin() {
+  const container = document.getElementById('adminPostList');
+  if (!container) return;
+  container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+  const filterEventId = document.getElementById('postFilterEvent')?.value || '';
+
+  try {
+    if (filterEventId) {
+      const snap = await db.collection('events').doc(filterEventId)
+        .collection('posts')
+        .orderBy('createdAt', 'desc')
+        .limit(30).get();
+
+      renderAdminPosts(container, snap.docs, filterEventId);
+    } else {
+      // 全イベントの投稿をまとめて取得（最新30件）
+      const evSnap = await db.collection('events').orderBy('date', 'desc').limit(20).get();
+      const allPosts = [];
+
+      await Promise.all(evSnap.docs.map(async evDoc => {
+        const pSnap = await evDoc.ref.collection('posts').orderBy('createdAt', 'desc').limit(10).get();
+        pSnap.docs.forEach(p => allPosts.push({
+          id: p.id,
+          eventId: evDoc.id,
+          eventTitle: evDoc.data().title,
+          ...p.data()
+        }));
+      }));
+
+      allPosts.sort((a,b) => {
+        const at = a.createdAt?.toMillis?.() || 0;
+        const bt = b.createdAt?.toMillis?.() || 0;
+        return bt - at;
+      });
+
+      if (allPosts.length === 0) {
+        container.innerHTML = '<div class="empty-state"><p>投稿がありません</p></div>';
+        return;
+      }
+
+      container.innerHTML = allPosts.slice(0, 30).map(p => renderAdminPostCard(p, p.eventId, p.eventTitle)).join('');
+    }
+  } catch (e) {
+    container.innerHTML = '<div class="empty-state"><p>読み込みエラー</p></div>';
+  }
+}
+
+function renderAdminPosts(container, docs, eventId) {
+  if (docs.length === 0) {
+    container.innerHTML = '<div class="empty-state"><p>この投稿はまだありません</p></div>';
+    return;
+  }
+  container.innerHTML = docs.map(doc => {
+    const p = doc.data();
+    return renderAdminPostCard({ id: doc.id, ...p }, eventId, '');
+  }).join('');
+}
+
+function renderAdminPostCard(p, eventId, eventTitle) {
+  return `
+    <div class="event-post-card">
+      ${eventTitle ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-family:'Inter',sans-serif;">📅 ${escHtml(eventTitle)}</div>` : ''}
+      <div class="event-post-admin-label">📌 管理者投稿</div>
+      <div class="event-post-content">${escHtml(p.content)}</div>
+      <div class="event-post-meta">
+        <span>${formatDate(p.createdAt)} — ${escHtml(p.createdByName || '管理者')}</span>
+        <button class="btn btn-danger btn-sm" style="padding:4px 10px;font-size:11px;"
+                onclick="deleteEventPost('${eventId}','${p.id}')">削除</button>
+      </div>
+    </div>`;
+}
+
+async function deleteEventPost(eventId, postId) {
+  if (!confirm('この投稿を削除しますか？')) return;
+  try {
+    await db.collection('events').doc(eventId)
+      .collection('posts').doc(postId).delete();
+    showToast('削除しました', 'info');
+    loadEventPostsAdmin();
+  } catch (e) {
+    showToast('エラー: ' + e.message, 'error');
+  }
+}
+
+// ========================================
 // チェックイン履歴
 // ========================================
 
@@ -388,12 +692,16 @@ async function loadCheckinHistory() {
     container.innerHTML = snap.docs.map(doc => {
       const c = doc.data();
       const isToday = c.dateStr === today;
+      const icon = c.userIcon || '👤';
       return `
         <div class="checkin-row">
-          <div>
-            <div class="ci-name">${escHtml(c.userName || '—')}</div>
-            <div class="ci-time">${formatDate(c.checkedInAt)}</div>
-            ${c.memo ? `<div class="ci-time">${escHtml(c.memo)}</div>` : ''}
+          <div style="display:flex;align-items:center;gap:12px;">
+            <div style="font-size:22px;">${escHtml(icon)}</div>
+            <div>
+              <div class="ci-name">${escHtml(c.userName || '—')}</div>
+              <div class="ci-time">${formatDate(c.checkedInAt)}</div>
+              ${c.memo ? `<div class="ci-time">${escHtml(c.memo)}</div>` : ''}
+            </div>
           </div>
           <div style="text-align:right;">
             ${isToday ? '<span class="badge badge-green">今日</span>' : ''}
@@ -433,7 +741,6 @@ async function applyPoints() {
 
   await applyPointsTo(uid, type, amount, reason || '管理者による操作');
 
-  // フォームリセット
   document.getElementById('ptAmount').value = '';
   document.getElementById('ptReason').value = '';
   loadPointLog();
@@ -441,8 +748,8 @@ async function applyPoints() {
 
 async function applyPointsTo(uid, type, amount, reason) {
   try {
-    const userRef = db.collection('users').doc(uid);
-    const userDoc = await userRef.get();
+    const userRef  = db.collection('users').doc(uid);
+    const userDoc  = await userRef.get();
     const userData = userDoc.data();
 
     let updateData = {};
@@ -642,4 +949,7 @@ function escHtml(str) {
 // モーダル外クリックで閉じる
 document.getElementById('memberModal').addEventListener('click', function(e) {
   if (e.target === this) closeMemberModal();
+});
+document.getElementById('accountModal').addEventListener('click', function(e) {
+  if (e.target === this) closeAccountModal();
 });

@@ -25,7 +25,9 @@
 <div class="admin-nav">
   <button class="admin-nav-btn active" onclick="switchSection('dashboard',this)">ダッシュボード</button>
   <button class="admin-nav-btn" onclick="switchSection('members',this)">メンバー</button>
+  <button class="admin-nav-btn" onclick="switchSection('accounts',this)">アカウント管理</button>
   <button class="admin-nav-btn" onclick="switchSection('events',this)">イベント</button>
+  <button class="admin-nav-btn" onclick="switchSection('eventposts',this)">イベント投稿</button>
   <button class="admin-nav-btn" onclick="switchSection('checkins',this)">チェックイン</button>
   <button class="admin-nav-btn" onclick="switchSection('points',this)">ポイント</button>
   <button class="admin-nav-btn" onclick="switchSection('notices',this)">お知らせ</button>
@@ -68,6 +70,29 @@
       <input type="text" class="form-input" id="memberSearch" placeholder="名前・メールで検索…" oninput="filterMembers()">
     </div>
     <div id="memberList"><div class="loading"><div class="spinner"></div> 読み込み中…</div></div>
+  </div>
+</div>
+
+<!-- ===== アカウント管理 ===== -->
+<div id="sec-accounts" class="admin-section">
+  <div class="admin-content">
+    <div class="page-title">アカウント管理</div>
+
+    <div class="search-box">
+      <span class="search-icon">🔍</span>
+      <input type="text" class="form-input" id="accountSearch" placeholder="名前・メールで検索…" oninput="filterAccounts()">
+    </div>
+
+    <div style="margin-bottom:16px;">
+      <div class="tag-filter">
+        <button class="tag-btn active" onclick="filterAccountRole('all',this)">すべて</button>
+        <button class="tag-btn" onclick="filterAccountRole('admin',this)">管理者</button>
+        <button class="tag-btn" onclick="filterAccountRole('member',this)">メンバー</button>
+        <button class="tag-btn" onclick="filterAccountRole('disabled',this)">無効</button>
+      </div>
+    </div>
+
+    <div id="accountList"><div class="loading"><div class="spinner"></div> 読み込み中…</div></div>
   </div>
 </div>
 
@@ -137,6 +162,46 @@
     </div>
 
     <div id="adminEventsList"><div class="loading"><div class="spinner"></div> 読み込み中…</div></div>
+  </div>
+</div>
+
+<!-- ===== イベント投稿管理 ===== -->
+<div id="sec-eventposts" class="admin-section">
+  <div class="admin-content">
+    <div class="page-title">イベント投稿</div>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;line-height:1.7;">
+      イベントに管理者からのお知らせ・速報・結果などを投稿できます。<br>
+      投稿はメンバーのイベント詳細画面に表示されます。
+    </p>
+
+    <!-- 投稿フォーム -->
+    <div class="card card-premium" style="margin-bottom:24px;">
+      <div style="font-size:14px;font-weight:700;color:var(--gold);margin-bottom:18px;letter-spacing:0.06em;">新規投稿</div>
+      <div class="form-group">
+        <label class="form-label">対象イベント *</label>
+        <div class="select-wrap">
+          <select class="form-select" id="postEventSelect">
+            <option value="">イベントを選択…</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">内容 *</label>
+        <textarea class="form-textarea" id="postContent" placeholder="メンバーへのお知らせ、速報、結果など…" style="min-height:120px;"></textarea>
+      </div>
+      <button class="btn btn-gold btn-block" onclick="submitEventPost()">投稿する</button>
+    </div>
+
+    <!-- 投稿一覧（イベント選択で絞り込み） -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div class="section-title" style="margin-top:0;margin-bottom:0;">投稿履歴</div>
+      <div class="select-wrap" style="width:180px;">
+        <select class="form-select" id="postFilterEvent" onchange="loadEventPostsAdmin()" style="font-size:12px;padding:8px 12px;">
+          <option value="">すべてのイベント</option>
+        </select>
+      </div>
+    </div>
+    <div id="adminPostList"><div class="loading"><div class="spinner"></div> 読み込み中…</div></div>
   </div>
 </div>
 
@@ -246,6 +311,18 @@
       <button class="modal-close" onclick="closeMemberModal()">✕</button>
     </div>
     <div id="memberModalContent"></div>
+  </div>
+</div>
+
+<!-- アカウント詳細モーダル -->
+<div class="modal-overlay" id="accountModal">
+  <div class="modal-box">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div class="modal-title" id="accountModalTitle"></div>
+      <button class="modal-close" onclick="closeAccountModal()">✕</button>
+    </div>
+    <div id="accountModalContent"></div>
   </div>
 </div>
 
