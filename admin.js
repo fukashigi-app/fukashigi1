@@ -24,17 +24,35 @@ auth.onAuthStateChanged(async user => {
   adminUser = user;
 
   const doc = await db.collection('users').doc(user.uid).get();
-  if (!doc.exists || doc.data().role !== 'admin') {
+  if (!doc.exists) {
     showToast('管理者権限がありません', 'error');
     setTimeout(() => { window.location.href = 'app.html'; }, 1500);
     return;
   }
-  adminUserData = doc.data();
+  const data = doc.data();
+  // name が「樹」または role が admin の場合に管理者として扱う
+  if (data.role !== 'admin' && data.name !== '樹') {
+    showToast('管理者権限がありません', 'error');
+    setTimeout(() => { window.location.href = 'app.html'; }, 1500);
+    return;
+  }
+  adminUserData = data;
   loadDashboard();
 });
 
 function doLogout() {
   auth.signOut().then(() => { window.location.href = 'index.html'; });
+}
+
+// ========================================
+// アバターHTML ヘルパー
+// ========================================
+
+function avatarHtml(iconUrl, size = 46) {
+  if (iconUrl && /^https?:\/\//.test(iconUrl)) {
+    return `<img src="${escHtml(iconUrl)}" alt="avatar" style="width:${size}px;height:${size}px;object-fit:cover;border-radius:50%;">`;
+  }
+  return escHtml(iconUrl || '👤');
 }
 
 // ========================================
@@ -49,15 +67,14 @@ function switchSection(sec, btn) {
   currentSection = sec;
 
   const loaders = {
-    dashboard:  loadDashboard,
-    members:    loadMembers,
-    accounts:   loadAccounts,
-    events:     loadAdminEvents,
-    eventposts: loadEventPostsSection,
-    checkins:   loadCheckinHistory,
-    points:     () => { loadPointLog(); loadMemberSelect(); },
-    notices:    loadNotices,
-    qr:         generateQR,
+    dashboard: loadDashboard,
+    members:   loadMembers,
+    accounts:  loadAccounts,
+    events:    loadAdminEvents,
+    checkins:  loadCheckinHistory,
+    points:    () => { loadPointLog(); loadMemberSelect(); },
+    notices:   loadNotices,
+    qr:        generateQR,
   };
   if (loaders[sec]) loaders[sec]();
 }
@@ -75,7 +92,7 @@ async function loadDashboard() {
     ]);
 
     const today = todayStr();
-    const todayCheckins = checkinsSnap.docs.filter(d => d.data().dateStr === today).length;
+    const todayCheckins = checkinsSnap.docs.filter(d => d.data().date === today).length;
 
     document.getElementById('dashMembers').textContent       = membersSnap.size;
     document.getElementById('dashEvents').textContent        = eventsSnap.size;
@@ -102,10 +119,9 @@ async function loadDashboard() {
             <div class="event-info-col">
               <div class="event-card-title">${escHtml(ev.title)}</div>
               <div class="event-card-meta">
-                <span>${categoryLabel(ev.category)}</span>
-                <span>👥 ${(ev.participants||[]).length}${ev.capacity ? ' / ' + ev.capacity : ''}名</span>
+                <span>${ev.date || ''}</span>
+                ${ev.time || ev.startTime ? `<span>${escHtml(ev.time || ev.startTime)}</span>` : ''}
               </div>
-              <div><span class="badge ${ev.isPublic ? 'badge-green' : 'badge-gray'}">${ev.isPublic ? '公開' : '非公開'}</span></div>
             </div>
           </div>`;
         }).join('');
@@ -115,7 +131,7 @@ async function loadDashboard() {
 }
 
 // ========================================
-// メンバー管理
+// メンバー（ユーザー）管理
 // ========================================
 
 async function loadMembers() {
@@ -145,20 +161,15 @@ function renderMembers() {
     return;
   }
   container.innerHTML = allMembersFiltered.map(m => {
-    const rankInfo = calcRank(m.checkInCount || 0);
     const icon = m.iconUrl || '👤';
     return `
       <div class="member-row" onclick="openMemberModal('${m.id}')">
-        <div class="member-avatar-sm">${escHtml(icon)}</div>
+        <div class="member-avatar-sm">${avatarHtml(icon)}</div>
         <div class="member-info">
           <div class="member-name">${escHtml(m.name || '—')}</div>
           <div class="member-sub">
-            ${m.memberNumber || ''} &nbsp;•&nbsp;
             <span class="badge badge-${m.role==='admin'?'gold':'blue'}">${m.role==='admin'?'管理者':'メンバー'}</span>
-            &nbsp;
-            <span style="color:${rankInfo.color};font-size:11px;font-weight:700;">${rankInfo.rank}</span>
           </div>
-          <div class="member-sub" style="margin-top:2px;">来店 ${m.checkInCount||0}回</div>
         </div>
         <div class="member-points">
           <div class="pts">${(m.points||0).toLocaleString()}</div>
@@ -171,47 +182,39 @@ function renderMembers() {
 function openMemberModal(uid) {
   const m = allMembers.find(x => x.id === uid);
   if (!m) return;
-  const rankInfo = calcRank(m.checkInCount || 0);
-  const icon = m.iconUrl || '👤';
 
   document.getElementById('memberModalTitle').textContent = m.name || '—';
   document.getElementById('memberModalContent').innerHTML = `
     <div class="divider"></div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;">
-      <span class="badge badge-gold">${rankInfo.rank}</span>
-      <span class="badge badge-gray">${m.title || '新参者'}</span>
-      <span class="badge badge-${m.role==='admin'?'gold':'gray'}">${m.role==='admin'?'管理者':'メンバー'}</span>
+    <div style="text-align:center;margin-bottom:16px;">
+      <div style="width:72px;height:72px;border-radius:50%;margin:0 auto 10px;overflow:hidden;background:var(--bg-card2);border:2px solid rgba(212,175,55,0.4);display:flex;align-items:center;justify-content:center;font-size:30px;">
+        ${avatarHtml(m.iconUrl, 72)}
+      </div>
+      <div style="font-size:16px;font-weight:700;color:var(--text);">${escHtml(m.name || '—')}</div>
+      ${m.bio ? `<div style="font-size:13px;color:var(--text-muted);margin-top:4px;">${escHtml(m.bio)}</div>` : ''}
     </div>
     <div class="detail-list" style="margin-bottom:16px;">
-      ${adminRow('会員番号', m.memberNumber || '—')}
       ${adminRow('メール', m.email || '—')}
-      ${adminRow('ポイント', (m.points||0).toLocaleString() + ' pt')}
-      ${adminRow('累計ポイント', (m.totalPoints||0).toLocaleString() + ' pt')}
-      ${adminRow('チップ', m.chips || 0)}
-      ${adminRow('来店回数', (m.checkInCount||0) + ' 回')}
-      ${adminRow('イベント参加', (m.eventJoinCount||0) + ' 回')}
+      ${adminRow('所持ポイント', (m.points||0).toLocaleString() + ' pt')}
+      ${adminRow('権限', m.role === 'admin' ? '管理者' : 'メンバー')}
     </div>
 
     <div class="point-form" style="margin-bottom:12px;">
       <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--gold);">権限変更</div>
       <div style="display:flex;gap:8px;">
-        <button class="btn btn-outline btn-sm ${m.role!=='admin'?'btn-ghost':''}"
-                onclick="changeRole('${uid}','member')">一般メンバー</button>
-        <button class="btn btn-gold btn-sm ${m.role==='admin'?'':'btn-outline'}"
-                onclick="changeRole('${uid}','admin')">管理者に変更</button>
+        <button class="btn btn-outline btn-sm" onclick="changeRole('${uid}','member')">一般メンバー</button>
+        <button class="btn btn-gold btn-sm" onclick="changeRole('${uid}','admin')">管理者に変更</button>
       </div>
     </div>
 
     <div class="point-form">
-      <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--gold);">ポイント付与</div>
+      <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--gold);">ポイント付与・減算</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
         <input type="number" class="form-input" id="quickPtAmt" placeholder="100" style="font-size:14px;">
         <div class="select-wrap">
           <select class="form-select" id="quickPtType" style="font-size:14px;">
             <option value="point_add">ポイント付与</option>
             <option value="point_sub">ポイント減算</option>
-            <option value="chip_add">チップ付与</option>
-            <option value="chip_sub">チップ減算</option>
           </select>
         </div>
       </div>
@@ -248,9 +251,9 @@ async function changeRole(uid, role) {
 }
 
 async function quickApplyPoints(uid) {
-  const amount  = parseInt(document.getElementById('quickPtAmt').value);
-  const type    = document.getElementById('quickPtType').value;
-  const reason  = document.getElementById('quickPtReason').value.trim();
+  const amount = parseInt(document.getElementById('quickPtAmt').value);
+  const type   = document.getElementById('quickPtType').value;
+  const reason = document.getElementById('quickPtReason').value.trim();
 
   if (!amount || amount <= 0) { showToast('数量を入力してください', 'error'); return; }
 
@@ -306,12 +309,11 @@ function renderAccounts() {
     return;
   }
   container.innerHTML = allAccountsFiltered.map(m => {
-    const icon = m.iconUrl || '👤';
     const isDisabled = m.disabled || false;
     return `
       <div class="account-row" onclick="openAccountModal('${m.id}')">
         <div class="account-status-dot ${isDisabled ? 'disabled' : ''}"></div>
-        <div class="member-avatar-sm">${escHtml(icon)}</div>
+        <div class="member-avatar-sm">${avatarHtml(m.iconUrl)}</div>
         <div class="member-info">
           <div class="member-name">${escHtml(m.name || '—')}</div>
           <div class="account-email">${escHtml(m.email || '—')}</div>
@@ -339,15 +341,12 @@ function openAccountModal(uid) {
     <div class="divider"></div>
     <div class="detail-list" style="margin-bottom:16px;">
       ${adminRow('メールアドレス', m.email || '—')}
-      ${adminRow('会員番号', m.memberNumber || '—')}
       ${adminRow('権限', m.role === 'admin' ? '管理者' : '一般メンバー')}
       ${adminRow('ステータス', isDisabled ? '無効' : '有効')}
       ${adminRow('登録日', formatDateOnly(m.createdAt))}
-      ${adminRow('来店回数', (m.checkInCount||0) + ' 回')}
       ${adminRow('現在ポイント', (m.points||0).toLocaleString() + ' pt')}
     </div>
 
-    <!-- 権限変更 -->
     <div class="point-form" style="margin-bottom:12px;">
       <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--gold);">権限</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -356,19 +355,14 @@ function openAccountModal(uid) {
       </div>
     </div>
 
-    <!-- アカウント有効/無効 -->
     <div class="point-form" style="margin-bottom:12px;">
       <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--gold);">アカウント状態</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn btn-outline btn-sm" onclick="setAccountDisabled('${uid}', false)">有効にする</button>
         <button class="btn btn-danger btn-sm" onclick="setAccountDisabled('${uid}', true)">無効にする</button>
       </div>
-      <p style="font-size:11px;color:var(--text-muted);margin-top:8px;line-height:1.6;">
-        無効にするとメンバーがアプリを使用できなくなります（Firestore上のフラグ管理）
-      </p>
     </div>
 
-    <!-- パスワードリセット -->
     <div class="point-form">
       <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--gold);">パスワードリセット</div>
       <button class="btn btn-outline btn-block btn-sm" onclick="sendPasswordReset('${escHtml(m.email || '')}')">
@@ -439,7 +433,7 @@ async function loadAdminEvents() {
       return;
     }
     container.innerHTML = allAdminEvents.map(ev => {
-      const d = ev.date ? new Date(ev.date + 'T00:00:00') : null;
+      const d     = ev.date ? new Date(ev.date + 'T00:00:00') : null;
       const month = d ? (d.getMonth()+1)+'月' : '';
       const day   = d ? d.getDate() : '—';
       return `
@@ -452,17 +446,15 @@ async function loadAdminEvents() {
           <div class="event-info-col">
             <div class="event-card-title">${escHtml(ev.title)}</div>
             <div class="event-card-meta">
-              <span>${categoryLabel(ev.category)}</span>
-              ${ev.startTime ? `<span>${ev.startTime}〜${ev.endTime||''}</span>` : ''}
-              <span>${ev.fee ? ev.fee.toLocaleString()+'円' : '無料'}</span>
-              <span>👥 ${(ev.participants||[]).length}${ev.capacity?'/'+ev.capacity:''}名</span>
+              ${ev.time || ev.startTime ? `<span>${escHtml(ev.time || ev.startTime)}</span>` : ''}
             </div>
-            <span class="badge ${ev.isPublic ? 'badge-green' : 'badge-gray'}">${ev.isPublic ? '公開' : '非公開'}</span>
+            <span class="badge ${ev.isPublic !== false ? 'badge-green' : 'badge-gray'}">${ev.isPublic !== false ? '公開' : '非公開'}</span>
           </div>
         </div>
         <div style="display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--border);flex-wrap:wrap;">
-          <button class="btn btn-outline btn-sm" onclick="toggleEventPublic('${ev.id}', ${ev.isPublic})">
-            ${ev.isPublic ? '非公開にする' : '公開する'}
+          <button class="btn btn-outline btn-sm" onclick="showEditEventForm('${ev.id}')">編集</button>
+          <button class="btn btn-outline btn-sm" onclick="toggleEventPublic('${ev.id}', ${ev.isPublic !== false})">
+            ${ev.isPublic !== false ? '非公開にする' : '公開する'}
           </button>
           <button class="btn btn-danger btn-sm" onclick="deleteEvent('${ev.id}')">削除</button>
         </div>
@@ -479,37 +471,76 @@ function showCreateEventForm() {
   if (!document.getElementById('evDate').value) {
     document.getElementById('evDate').value = new Date().toISOString().slice(0,10);
   }
+  // 編集モードをリセット
+  const btn = form.querySelector('button.btn-gold');
+  if (btn) { btn.textContent = '作成する'; btn.onclick = createEvent; }
+  ['evTitle','evTime','evDescription'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  document.getElementById('evDate').value = new Date().toISOString().slice(0,10);
+}
+
+function showEditEventForm(evId) {
+  const ev = allAdminEvents.find(e => e.id === evId);
+  if (!ev) return;
+
+  const form = document.getElementById('createEventForm');
+  form.style.display = '';
+
+  document.getElementById('evTitle').value       = ev.title || '';
+  document.getElementById('evDate').value        = ev.date || '';
+  document.getElementById('evTime').value        = ev.time || ev.startTime || '';
+  document.getElementById('evDescription').value = ev.description || '';
+
+  const btn = form.querySelector('button.btn-gold');
+  if (btn) {
+    btn.textContent = '更新する';
+    btn.onclick = () => updateEvent(evId);
+  }
+  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function createEvent() {
-  const title    = document.getElementById('evTitle').value.trim();
-  const date     = document.getElementById('evDate').value;
-  const category = document.getElementById('evCategory').value;
-
+  const title = document.getElementById('evTitle').value.trim();
+  const date  = document.getElementById('evDate').value;
   if (!title) { showToast('イベント名を入力してください', 'error'); return; }
   if (!date)  { showToast('開催日を入力してください', 'error'); return; }
 
   try {
-    const data = {
+    await db.collection('events').add({
       title,
       date,
-      category,
-      startTime:   document.getElementById('evStartTime').value,
-      endTime:     document.getElementById('evEndTime').value,
-      fee:         parseInt(document.getElementById('evFee').value) || 0,
-      capacity:    parseInt(document.getElementById('evCapacity').value) || 0,
+      time:        document.getElementById('evTime').value,
       description: document.getElementById('evDescription').value.trim(),
-      isPublic:    document.getElementById('evPublic').checked,
-      participants: [],
+      isPublic:    true,
       createdAt:   firebase.firestore.FieldValue.serverTimestamp(),
       updatedAt:   firebase.firestore.FieldValue.serverTimestamp(),
-    };
-    await db.collection('events').add(data);
+    });
     showToast('イベントを作成しました', 'success');
     document.getElementById('createEventForm').style.display = 'none';
-    ['evTitle','evDate','evStartTime','evEndTime','evFee','evCapacity','evDescription'].forEach(id => {
-      document.getElementById(id).value = '';
+    loadAdminEvents();
+  } catch (e) {
+    showToast('エラー: ' + e.message, 'error');
+  }
+}
+
+async function updateEvent(evId) {
+  const title = document.getElementById('evTitle').value.trim();
+  const date  = document.getElementById('evDate').value;
+  if (!title) { showToast('イベント名を入力してください', 'error'); return; }
+  if (!date)  { showToast('開催日を入力してください', 'error'); return; }
+
+  try {
+    await db.collection('events').doc(evId).update({
+      title,
+      date,
+      time:        document.getElementById('evTime').value,
+      description: document.getElementById('evDescription').value.trim(),
+      updatedAt:   firebase.firestore.FieldValue.serverTimestamp(),
     });
+    showToast('イベントを更新しました', 'success');
+    document.getElementById('createEventForm').style.display = 'none';
     loadAdminEvents();
   } catch (e) {
     showToast('エラー: ' + e.message, 'error');
@@ -518,7 +549,7 @@ async function createEvent() {
 
 async function toggleEventPublic(id, isPublic) {
   try {
-    await db.collection('events').doc(id).update({ isPublic: !isPublic });
+    await db.collection('events').doc(id).update({ isPublic: !isPublic, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
     showToast(isPublic ? '非公開にしました' : '公開しました', 'success');
     loadAdminEvents();
   } catch (e) {
@@ -538,141 +569,6 @@ async function deleteEvent(id) {
 }
 
 // ========================================
-// イベント投稿管理
-// ========================================
-
-async function loadEventPostsSection() {
-  await loadEventSelectOptions();
-  await loadEventPostsAdmin();
-}
-
-async function loadEventSelectOptions() {
-  try {
-    const snap = await db.collection('events').orderBy('date', 'desc').get();
-    const events = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-    const opts = events.map(ev => `<option value="${ev.id}">${escHtml(ev.title)} (${ev.date || '日付未定'})</option>`).join('');
-
-    const sel1 = document.getElementById('postEventSelect');
-    const sel2 = document.getElementById('postFilterEvent');
-    if (sel1) sel1.innerHTML = '<option value="">イベントを選択…</option>' + opts;
-    if (sel2) sel2.innerHTML = '<option value="">すべてのイベント</option>' + opts;
-  } catch (e) {
-    console.error(e);
-  }
-}
-
-async function submitEventPost() {
-  const eventId = document.getElementById('postEventSelect').value;
-  const content = document.getElementById('postContent').value.trim();
-
-  if (!eventId) { showToast('イベントを選択してください', 'error'); return; }
-  if (!content) { showToast('内容を入力してください', 'error'); return; }
-
-  try {
-    await db.collection('events').doc(eventId)
-      .collection('posts')
-      .add({
-        content,
-        createdBy:     adminUserData.uid || adminUser.uid,
-        createdByName: adminUserData.name || '管理者',
-        createdAt:     firebase.firestore.FieldValue.serverTimestamp(),
-      });
-
-    showToast('投稿しました', 'success');
-    document.getElementById('postContent').value = '';
-    loadEventPostsAdmin();
-  } catch (e) {
-    showToast('エラー: ' + e.message, 'error');
-  }
-}
-
-async function loadEventPostsAdmin() {
-  const container = document.getElementById('adminPostList');
-  if (!container) return;
-  container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-
-  const filterEventId = document.getElementById('postFilterEvent')?.value || '';
-
-  try {
-    if (filterEventId) {
-      const snap = await db.collection('events').doc(filterEventId)
-        .collection('posts')
-        .orderBy('createdAt', 'desc')
-        .limit(30).get();
-
-      renderAdminPosts(container, snap.docs, filterEventId);
-    } else {
-      // 全イベントの投稿をまとめて取得（最新30件）
-      const evSnap = await db.collection('events').orderBy('date', 'desc').limit(20).get();
-      const allPosts = [];
-
-      await Promise.all(evSnap.docs.map(async evDoc => {
-        const pSnap = await evDoc.ref.collection('posts').orderBy('createdAt', 'desc').limit(10).get();
-        pSnap.docs.forEach(p => allPosts.push({
-          id: p.id,
-          eventId: evDoc.id,
-          eventTitle: evDoc.data().title,
-          ...p.data()
-        }));
-      }));
-
-      allPosts.sort((a,b) => {
-        const at = a.createdAt?.toMillis?.() || 0;
-        const bt = b.createdAt?.toMillis?.() || 0;
-        return bt - at;
-      });
-
-      if (allPosts.length === 0) {
-        container.innerHTML = '<div class="empty-state"><p>投稿がありません</p></div>';
-        return;
-      }
-
-      container.innerHTML = allPosts.slice(0, 30).map(p => renderAdminPostCard(p, p.eventId, p.eventTitle)).join('');
-    }
-  } catch (e) {
-    container.innerHTML = '<div class="empty-state"><p>読み込みエラー</p></div>';
-  }
-}
-
-function renderAdminPosts(container, docs, eventId) {
-  if (docs.length === 0) {
-    container.innerHTML = '<div class="empty-state"><p>この投稿はまだありません</p></div>';
-    return;
-  }
-  container.innerHTML = docs.map(doc => {
-    const p = doc.data();
-    return renderAdminPostCard({ id: doc.id, ...p }, eventId, '');
-  }).join('');
-}
-
-function renderAdminPostCard(p, eventId, eventTitle) {
-  return `
-    <div class="event-post-card">
-      ${eventTitle ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-family:'Inter',sans-serif;">📅 ${escHtml(eventTitle)}</div>` : ''}
-      <div class="event-post-admin-label">📌 管理者投稿</div>
-      <div class="event-post-content">${escHtml(p.content)}</div>
-      <div class="event-post-meta">
-        <span>${formatDate(p.createdAt)} — ${escHtml(p.createdByName || '管理者')}</span>
-        <button class="btn btn-danger btn-sm" style="padding:4px 10px;font-size:11px;"
-                onclick="deleteEventPost('${eventId}','${p.id}')">削除</button>
-      </div>
-    </div>`;
-}
-
-async function deleteEventPost(eventId, postId) {
-  if (!confirm('この投稿を削除しますか？')) return;
-  try {
-    await db.collection('events').doc(eventId)
-      .collection('posts').doc(postId).delete();
-    showToast('削除しました', 'info');
-    loadEventPostsAdmin();
-  } catch (e) {
-    showToast('エラー: ' + e.message, 'error');
-  }
-}
-
-// ========================================
 // チェックイン履歴
 // ========================================
 
@@ -680,7 +576,7 @@ async function loadCheckinHistory() {
   const container = document.getElementById('checkinHistory');
   try {
     const snap = await db.collection('checkins')
-      .orderBy('checkedInAt', 'desc')
+      .orderBy('createdAt', 'desc')
       .limit(50).get();
 
     if (snap.empty) {
@@ -691,21 +587,22 @@ async function loadCheckinHistory() {
     const today = todayStr();
     container.innerHTML = snap.docs.map(doc => {
       const c = doc.data();
-      const isToday = c.dateStr === today;
+      const isToday = c.date === today;
       const icon = c.userIcon || '👤';
       return `
         <div class="checkin-row">
           <div style="display:flex;align-items:center;gap:12px;">
-            <div style="font-size:22px;">${escHtml(icon)}</div>
+            <div style="width:40px;height:40px;border-radius:50%;overflow:hidden;background:var(--bg-card2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">
+              ${avatarHtml(icon, 40)}
+            </div>
             <div>
               <div class="ci-name">${escHtml(c.userName || '—')}</div>
-              <div class="ci-time">${formatDate(c.checkedInAt)}</div>
-              ${c.memo ? `<div class="ci-time">${escHtml(c.memo)}</div>` : ''}
+              <div class="ci-time">${formatDate(c.createdAt)}</div>
             </div>
           </div>
           <div style="text-align:right;">
             ${isToday ? '<span class="badge badge-green">今日</span>' : ''}
-            ${c.pointsAdded ? `<div style="color:var(--success);font-size:13px;font-weight:700;">+${c.pointsAdded}pt</div>` : ''}
+            ${c.points ? `<div style="color:var(--success);font-size:13px;font-weight:700;">+${c.points}pt</div>` : ''}
           </div>
         </div>`;
     }).join('');
@@ -720,7 +617,7 @@ async function loadCheckinHistory() {
 
 async function loadMemberSelect() {
   const sel = document.getElementById('ptMember');
-  if (!sel || sel.options.length > 0) return;
+  if (!sel) return;
   try {
     const snap = await db.collection('users').orderBy('name').get();
     sel.innerHTML = snap.docs.map(d => {
@@ -736,7 +633,7 @@ async function applyPoints() {
   const amount = parseInt(document.getElementById('ptAmount').value);
   const reason = document.getElementById('ptReason').value.trim();
 
-  if (!uid)    { showToast('メンバーを選択してください', 'error'); return; }
+  if (!uid)              { showToast('メンバーを選択してください', 'error'); return; }
   if (!amount || amount <= 0) { showToast('数量を入力してください', 'error'); return; }
 
   await applyPointsTo(uid, type, amount, reason || '管理者による操作');
@@ -744,6 +641,7 @@ async function applyPoints() {
   document.getElementById('ptAmount').value = '';
   document.getElementById('ptReason').value = '';
   loadPointLog();
+  loadMemberSelect();
 }
 
 async function applyPointsTo(uid, type, amount, reason) {
@@ -754,25 +652,21 @@ async function applyPointsTo(uid, type, amount, reason) {
 
     let updateData = {};
     if (type === 'point_add') {
-      updateData = {
-        points:      firebase.firestore.FieldValue.increment(amount),
-        totalPoints: firebase.firestore.FieldValue.increment(amount),
-      };
+      updateData = { points: firebase.firestore.FieldValue.increment(amount) };
     } else if (type === 'point_sub') {
       updateData = { points: firebase.firestore.FieldValue.increment(-amount) };
-    } else if (type === 'chip_add') {
-      updateData = { chips: firebase.firestore.FieldValue.increment(amount) };
-    } else if (type === 'chip_sub') {
-      updateData = { chips: firebase.firestore.FieldValue.increment(-amount) };
+    } else {
+      showToast('不明な操作種別です', 'error');
+      return false;
     }
     updateData.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
 
-    const finalAmount = type.endsWith('_sub') ? -amount : amount;
+    const finalAmount = type === 'point_sub' ? -amount : amount;
 
     const batch = db.batch();
     batch.update(userRef, updateData);
     batch.set(db.collection('pointLogs').doc(), {
-      userId:    uid,
+      uid,
       userName:  userData.name || '',
       type,
       amount:    finalAmount,
@@ -805,10 +699,7 @@ async function loadPointLog() {
     container.innerHTML = snap.docs.map(doc => {
       const l = doc.data();
       const plus = l.amount > 0;
-      const typeLabel = {
-        point_add:'ポイント付与', point_sub:'ポイント減算',
-        chip_add:'チップ付与',   chip_sub:'チップ減算'
-      }[l.type] || l.type;
+      const typeLabel = { point_add:'ポイント付与', point_sub:'ポイント減算' }[l.type] || l.type;
       return `
         <div class="log-row">
           <div>
@@ -841,10 +732,11 @@ async function postNotice() {
       title, body, pinned,
       createdBy: adminUserData.name || 'admin',
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
     showToast('投稿しました', 'success');
-    document.getElementById('noticeTitle').value = '';
-    document.getElementById('noticeBody').value  = '';
+    document.getElementById('noticeTitle').value  = '';
+    document.getElementById('noticeBody').value   = '';
     document.getElementById('noticePinned').checked = false;
     loadNotices();
   } catch (e) {
@@ -873,7 +765,7 @@ async function loadNotices() {
               ${n.pinned ? '<span class="badge badge-gold" style="margin-bottom:6px;display:inline-block;">📌 固定</span>' : ''}
               <div class="notice-title">${escHtml(n.title)}</div>
               <div class="notice-body">${escHtml(n.body)}</div>
-              <div class="notice-meta">${formatDate(n.createdAt)} — ${escHtml(n.createdBy||'')}</div>
+              <div class="notice-meta">${formatDate(n.createdAt)}</div>
             </div>
             <div style="display:flex;gap:6px;flex-shrink:0;">
               <button class="btn btn-danger btn-sm" onclick="deleteNotice('${doc.id}')">削除</button>
@@ -888,9 +780,13 @@ async function loadNotices() {
 
 async function deleteNotice(id) {
   if (!confirm('このお知らせを削除しますか？')) return;
-  await db.collection('announcements').doc(id).delete();
-  showToast('削除しました', 'info');
-  loadNotices();
+  try {
+    await db.collection('announcements').doc(id).delete();
+    showToast('削除しました', 'info');
+    loadNotices();
+  } catch (e) {
+    showToast('エラー: ' + e.message, 'error');
+  }
 }
 
 // ========================================

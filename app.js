@@ -47,13 +47,10 @@ async function loadUserData() {
         uid: currentUser.uid,
         name: currentUser.displayName || currentUser.email.split('@')[0],
         email: currentUser.email,
-        iconUrl: '👤',
-        memberNumber: 'F' + String(Date.now()).slice(-6),
-        role: 'member',
-        points: 0, totalPoints: 0, chips: 0,
-        rank: 'ROOKIE', title: '新参者',
-        badges: [], checkInCount: 0, eventJoinCount: 0,
+        iconUrl: '',
         bio: '',
+        role: 'member',
+        points: 0,
         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       };
@@ -61,19 +58,12 @@ async function loadUserData() {
       currentUserData = data;
     } else {
       currentUserData = doc.data();
-      const rankInfo = calcRank(currentUserData.checkInCount || 0);
-      const title    = calcTitle(currentUserData.checkInCount || 0, currentUserData.eventJoinCount || 0);
-      if (currentUserData.rank !== rankInfo.rank || currentUserData.title !== title) {
-        await db.collection('users').doc(currentUser.uid).update({ rank: rankInfo.rank, title });
-        currentUserData.rank  = rankInfo.rank;
-        currentUserData.title = title;
-      }
     }
     // 管理者はadmin.htmlへ
-    if (currentUserData.role === 'admin') { window.location.href = 'admin.html'; return; }
-    // イベントタブは管理者のみ表示（管理者はadmin.htmlに移動するため、通常は非表示）
-    const navEvents = document.getElementById('nav-events');
-    if (navEvents) navEvents.style.display = 'none';
+    if (currentUserData.role === 'admin' || currentUserData.name === '樹') {
+      window.location.href = 'admin.html';
+      return;
+    }
   } catch (e) {
     console.error('ユーザーデータ読み込みエラー:', e);
   }
@@ -88,7 +78,6 @@ function doLogout() {
 // アバター表示ヘルパー
 // ========================================
 
-// 要素にアバター（画像URL or 絵文字）をセット
 function setAvatarEl(el, iconUrl) {
   if (!el) return;
   if (iconUrl && /^https?:\/\//.test(iconUrl)) {
@@ -98,7 +87,6 @@ function setAvatarEl(el, iconUrl) {
   }
 }
 
-// テンプレートリテラル内で使うアバターHTML
 function avatarContent(iconUrl) {
   if (iconUrl && /^https?:\/\//.test(iconUrl)) {
     return `<img src="${escHtml(iconUrl)}" alt="avatar" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">`;
@@ -134,15 +122,7 @@ function loadHome() {
   document.getElementById('homeUserName').textContent   = d.name;
   setAvatarEl(document.getElementById('homeAvatar'), d.iconUrl);
 
-  const rankInfo = calcRank(d.checkInCount || 0);
-  document.getElementById('homeRankRow').innerHTML = `
-    <span class="badge badge-gold" style="font-size:11px;">${rankInfo.rank}</span>
-    <span class="badge badge-gray" style="font-size:11px;">${d.title || '新参者'}</span>
-  `;
-
-  document.getElementById('statPoints').textContent   = (d.points || 0).toLocaleString();
-  document.getElementById('statCheckins').textContent = d.checkInCount || 0;
-  document.getElementById('statChips').textContent    = d.chips || 0;
+  document.getElementById('statPoints').textContent = (d.points || 0).toLocaleString();
 
   checkTodayCheckIn();
   loadTodayMembers();
@@ -154,8 +134,8 @@ async function checkTodayCheckIn() {
   const today = todayStr();
   try {
     const snap = await db.collection('checkins')
-      .where('userId', '==', currentUser.uid)
-      .where('dateStr', '==', today)
+      .where('uid', '==', currentUser.uid)
+      .where('date', '==', today)
       .limit(1).get();
 
     const btn    = document.getElementById('checkinBtn');
@@ -171,12 +151,11 @@ async function checkTodayCheckIn() {
 }
 
 async function loadTodayMembers() {
-  const today   = todayStr();
+  const today     = todayStr();
   const container = document.getElementById('todayMembers');
   try {
-    // 複合インデックス不要なよう orderBy なしで取得 → JS でソート
     const snap = await db.collection('checkins')
-      .where('dateStr', '==', today)
+      .where('date', '==', today)
       .limit(20).get();
 
     if (snap.empty) {
@@ -185,8 +164,8 @@ async function loadTodayMembers() {
     }
 
     const sorted = snap.docs.sort((a, b) => {
-      const at = a.data().checkedInAt?.toMillis?.() || 0;
-      const bt = b.data().checkedInAt?.toMillis?.() || 0;
+      const at = a.data().createdAt?.toMillis?.() || 0;
+      const bt = b.data().createdAt?.toMillis?.() || 0;
       return at - bt;
     });
 
@@ -232,7 +211,6 @@ async function loadHomeEvents() {
   const container = document.getElementById('homeEvents');
   try {
     const today = new Date().toISOString().slice(0, 10);
-    // where + orderBy の複合インデックス不要なよう isPublic フィルタはJS側で実施
     const snap  = await db.collection('events')
       .orderBy('date', 'asc')
       .limit(20).get();
@@ -347,12 +325,10 @@ function renderDayList() {
     const wd  = ['日','月','火','水','木','金','土'][d.getDay()];
     const items = groups[dateStr].map(ev => {
       const timePart = ev.time || ev.startTime || '';
-      const feePart  = ev.fee ? ev.fee.toLocaleString() + '円' : '';
       return `
         <div class="day-event-item">
           <div class="day-event-title">・${escHtml(ev.title)}</div>
           ${timePart ? `<div class="day-event-meta">${escHtml(timePart)} 開始</div>` : ''}
-          ${feePart  ? `<div class="day-event-meta">参加費 ${feePart}</div>` : ''}
           ${ev.description ? `<div class="day-event-desc">${escHtml(ev.description)}</div>` : ''}
         </div>`;
     }).join('');
@@ -385,7 +361,6 @@ function renderEventCard(id, ev) {
         <div class="event-card-title">${escHtml(ev.title)}</div>
         <div class="event-card-meta">
           ${ev.time || ev.startTime ? `<span>${escHtml(ev.time || ev.startTime)}</span>` : ''}
-          ${ev.fee ? `<span>${ev.fee.toLocaleString()}円</span>` : '<span>無料</span>'}
         </div>
       </div>
     </div>`;
@@ -398,66 +373,20 @@ function renderEventCard(id, ev) {
 async function openEventModal(eventId) {
   const ev = allEvents.find(e => e.id === eventId) || {};
   selectedEvent = { id: eventId, ...ev };
-  const joined = (ev.participants || []).includes(currentUser.uid);
-  const count  = (ev.participants || []).length;
 
   document.getElementById('eventModalTitle').textContent = ev.title || '';
   document.getElementById('eventModalContent').innerHTML = `
     <div class="divider"></div>
     <div style="margin-bottom:16px;">
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
-        <span class="badge badge-gray">${categoryLabel(ev.category)}</span>
-        ${joined ? '<span class="badge badge-green">参加予定</span>' : ''}
-      </div>
       <div class="detail-list">
         ${dRow('開催日', ev.date || '未定')}
-        ${dRow('時間', (ev.startTime || '?') + '〜' + (ev.endTime || '?'))}
-        ${dRow('参加費', ev.fee ? ev.fee.toLocaleString() + '円' : '無料')}
-        ${dRow('参加者', count + (ev.capacity > 0 ? ' / ' + ev.capacity : '') + '名')}
+        ${ev.time || ev.startTime ? dRow('時間', ev.time || ev.startTime) : ''}
       </div>
     </div>
-    ${ev.description ? `<div style="background:var(--bg-card2);border-radius:6px;padding:14px;font-size:13px;line-height:1.8;color:var(--text-sub);white-space:pre-line;margin-bottom:18px;">${escHtml(ev.description)}</div>` : ''}
-    <button class="btn ${joined ? 'btn-danger' : 'btn-gold'} btn-block"
-            id="joinCancelBtn"
-            onclick="toggleJoin('${eventId}', ${joined})">
-      ${joined ? '参加キャンセル' : '参加する'}
-    </button>
-    <div class="section-title" style="margin-top:24px;">管理者からの投稿</div>
-    <div id="eventPostsList"><div class="loading"><div class="spinner"></div></div></div>
+    ${ev.description ? `<div style="background:var(--bg-card2);border-radius:6px;padding:14px;font-size:13px;line-height:1.8;color:var(--text-sub);white-space:pre-line;">${escHtml(ev.description)}</div>` : ''}
   `;
 
   document.getElementById('eventModal').classList.add('open');
-  loadEventPosts(eventId);
-}
-
-async function loadEventPosts(eventId) {
-  const container = document.getElementById('eventPostsList');
-  if (!container) return;
-  try {
-    const snap = await db.collection('events').doc(eventId)
-      .collection('posts')
-      .orderBy('createdAt', 'desc')
-      .limit(20).get();
-
-    if (snap.empty) {
-      container.innerHTML = '<div style="font-size:13px;color:var(--text-muted);padding:8px 0 4px;">投稿はありません</div>';
-      return;
-    }
-    container.innerHTML = snap.docs.map(doc => {
-      const p = doc.data();
-      return `
-        <div class="event-post-card">
-          <div class="event-post-admin-label">📌 管理者投稿</div>
-          <div class="event-post-content">${escHtml(p.content)}</div>
-          <div class="event-post-meta">
-            <span>${escHtml(p.createdByName || '管理者')}</span>
-            <span>${formatDate(p.createdAt)}</span>
-          </div>
-        </div>`;
-    }).join('');
-  } catch (e) {
-    container.innerHTML = '<div style="font-size:13px;color:var(--text-muted);">読み込みエラー</div>';
-  }
 }
 
 function dRow(label, val) {
@@ -469,44 +398,6 @@ function dRow(label, val) {
 
 function closeEventModal() {
   document.getElementById('eventModal').classList.remove('open');
-}
-
-async function toggleJoin(eventId, currentlyJoined) {
-  const btn = document.getElementById('joinCancelBtn');
-  btn.disabled = true;
-
-  try {
-    const ref  = db.collection('events').doc(eventId);
-    const ev   = await ref.get();
-    const data = ev.data();
-
-    if (currentlyJoined) {
-      await ref.update({ participants: firebase.firestore.FieldValue.arrayRemove(currentUser.uid) });
-      await db.collection('users').doc(currentUser.uid).update({
-        eventJoinCount: firebase.firestore.FieldValue.increment(-1)
-      });
-      showToast('参加をキャンセルしました', 'info');
-    } else {
-      if (data.capacity > 0 && (data.participants || []).length >= data.capacity) {
-        showToast('定員に達しています', 'error');
-        btn.disabled = false;
-        return;
-      }
-      await ref.update({ participants: firebase.firestore.FieldValue.arrayUnion(currentUser.uid) });
-      await db.collection('users').doc(currentUser.uid).update({
-        eventJoinCount: firebase.firestore.FieldValue.increment(1)
-      });
-      showToast('参加登録しました', 'success');
-    }
-
-    closeEventModal();
-    await loadUserData();
-    loadEvents();
-    loadHome();
-  } catch (e) {
-    showToast('エラー: ' + e.message, 'error');
-    btn.disabled = false;
-  }
 }
 
 // ========================================
@@ -539,52 +430,52 @@ async function onQRSuccess(text) {
   if (qrScanner) qrScanner.pause();
 
   const today = todayStr();
-  const snap  = await db.collection('checkins')
-    .where('userId', '==', currentUser.uid)
-    .where('dateStr', '==', today)
-    .limit(1).get();
+  try {
+    const snap = await db.collection('checkins')
+      .where('uid', '==', currentUser.uid)
+      .where('date', '==', today)
+      .limit(1).get();
 
-  if (!snap.empty) {
-    showQRMessage('本日はすでにチェックイン済みです', 'var(--text-muted)');
-    return;
+    if (!snap.empty) {
+      showQRMessage('本日はすでにチェックイン済みです', 'var(--text-muted)');
+      return;
+    }
+
+    const batch      = db.batch();
+    const checkinRef = db.collection('checkins').doc();
+    batch.set(checkinRef, {
+      uid:      currentUser.uid,
+      userName: currentUserData.name,
+      userIcon: currentUserData.iconUrl || '👤',
+      date:     today,
+      points:   10,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    batch.update(db.collection('users').doc(currentUser.uid), {
+      points:    firebase.firestore.FieldValue.increment(10),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    await batch.commit();
+
+    showQRMessage('チェックイン完了  +10 pt', 'var(--gold)');
+    showToast('チェックイン完了！ +10pt 獲得', 'success');
+
+    setTimeout(() => {
+      closeQRScanner();
+      loadUserData().then(() => loadHome());
+    }, 2000);
+  } catch (e) {
+    showQRMessage('エラーが発生しました: ' + e.message, 'var(--danger)');
+    if (qrScanner) qrScanner.resume();
   }
-
-  const batch      = db.batch();
-  const checkinRef = db.collection('checkins').doc();
-  batch.set(checkinRef, {
-    userId:      currentUser.uid,
-    userName:    currentUserData.name,
-    userIcon:    currentUserData.iconUrl || '👤',
-    dateStr:     today,
-    checkedInAt: firebase.firestore.FieldValue.serverTimestamp(),
-    eventId:     '',
-    pointsAdded: 10,
-    memo:        '通常チェックイン',
-  });
-  batch.update(db.collection('users').doc(currentUser.uid), {
-    checkInCount: firebase.firestore.FieldValue.increment(1),
-    points:       firebase.firestore.FieldValue.increment(10),
-    totalPoints:  firebase.firestore.FieldValue.increment(10),
-    updatedAt:    firebase.firestore.FieldValue.serverTimestamp(),
-  });
-  await batch.commit();
-
-  showQRMessage('チェックイン完了  +10 pt', 'var(--gold)');
-  showToast('チェックイン完了！ +10pt 獲得', 'success');
-  await checkAndAwardBadges();
-
-  setTimeout(() => {
-    closeQRScanner();
-    loadUserData().then(() => loadHome());
-  }, 2000);
 }
 
 function showQRMessage(msg, color) {
   const el = document.getElementById('qrMessage');
   el.textContent = msg;
-  el.style.color  = color;
+  el.style.color      = color;
   el.style.background = 'var(--bg-card2)';
-  el.style.display = 'block';
+  el.style.display    = 'block';
 }
 
 function closeQRScanner() {
@@ -594,40 +485,6 @@ function closeQRScanner() {
       qrScanner = null;
       document.getElementById('qr-reader').innerHTML = '';
     }).catch(() => {});
-  }
-}
-
-// ========================================
-// バッジ付与
-// ========================================
-
-const BADGES_DEF = [
-  { id: 'first_visit',  name: '初来店',      icon: '⭐', condition: d => d.checkInCount >= 1 },
-  { id: 'visit_5',      name: '5回来店',      icon: '🌟', condition: d => d.checkInCount >= 5 },
-  { id: 'visit_10',     name: '10回来店',     icon: '💎', condition: d => d.checkInCount >= 10 },
-  { id: 'visit_30',     name: '30回来店',     icon: '👑', condition: d => d.checkInCount >= 30 },
-  { id: 'event_join',   name: 'イベント参加', icon: '🎮', condition: d => d.eventJoinCount >= 1 },
-  { id: 'event_5',      name: '5回参加',      icon: '🏆', condition: d => d.eventJoinCount >= 5 },
-  { id: 'resistance',   name: 'レジスタンス', icon: '✊', condition: d => d.checkInCount >= 20 },
-  { id: 'headquarters', name: '住人',         icon: '🏠', condition: d => d.checkInCount >= 50 },
-  { id: 'executive',    name: '幹部候補',     icon: '🗝', condition: d => d.checkInCount >= 30 },
-];
-
-async function checkAndAwardBadges() {
-  const doc     = await db.collection('users').doc(currentUser.uid).get();
-  const data    = doc.data();
-  const current = data.badges || [];
-  const toAdd   = BADGES_DEF
-    .filter(b => !current.includes(b.id) && b.condition(data))
-    .map(b => b.id);
-  if (toAdd.length > 0) {
-    await db.collection('users').doc(currentUser.uid).update({
-      badges: firebase.firestore.FieldValue.arrayUnion(...toAdd)
-    });
-    toAdd.forEach(id => {
-      const badge = BADGES_DEF.find(b => b.id === id);
-      if (badge) showToast(`バッジ獲得：${badge.name}`, 'success');
-    });
   }
 }
 
@@ -656,7 +513,6 @@ function loadChat() {
     .onSnapshot(snap => {
       renderChatMessages(snap.docs);
     }, err => {
-      // where + orderBy が同一フィールドなのでインデックス不要だが念のため
       const errMsg = err.code === 'permission-denied'
         ? 'チャットの読み込み権限がありません。'
         : '読み込みエラー: ' + err.message;
@@ -676,7 +532,7 @@ function renderChatMessages(docs) {
   container.innerHTML = docs.map(doc => {
     const m   = doc.data();
     const own = m.uid === currentUser?.uid;
-    const iconHtml = avatarContent(m.userIcon);
+    const iconHtml = avatarContent(m.iconUrl || m.userIcon);
     const canDelete = own || (currentUserData?.role === 'admin');
     const timeStr = m.createdAt ? formatTimeOnly(m.createdAt) : '';
 
@@ -701,7 +557,7 @@ function renderChatMessages(docs) {
 }
 
 async function sendChatMessage() {
-  const input = document.getElementById('chatInput');
+  const input   = document.getElementById('chatInput');
   const message = input.value.trim();
   if (!message || !currentUser) return;
 
@@ -713,9 +569,9 @@ async function sendChatMessage() {
 
   try {
     await db.collection('chats').add({
-      uid:       currentUser.uid,
-      name:      currentUserData?.name || '名無し',
-      userIcon:  currentUserData?.iconUrl || '👤',
+      uid:      currentUser.uid,
+      name:     currentUserData?.name || '名無し',
+      iconUrl:  currentUserData?.iconUrl || '',
       message,
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
@@ -723,7 +579,6 @@ async function sendChatMessage() {
     const errMsgs = {
       'permission-denied': '送信権限がありません。ログインし直してください。',
       'unavailable':       'ネットワークエラーが発生しました。接続を確認してください。',
-      'not-found':         'チャットコレクションが見つかりません。',
     };
     const code = e.code?.split('/')[1] || '';
     showToast(errMsgs[code] || '送信に失敗しました：' + e.message, 'error');
@@ -764,7 +619,6 @@ function openEditProfile() {
   selectedIcon      = currentUserData?.iconUrl || '👤';
   selectedImageFile = null;
 
-  // 画像プレビューを現在のアイコンで初期化
   const preview = document.getElementById('profileImagePreview');
   if (preview) {
     if (selectedIcon && /^https?:\/\//.test(selectedIcon)) {
@@ -774,7 +628,6 @@ function openEditProfile() {
     }
   }
 
-  // 絵文字ピッカー
   const grid = document.getElementById('iconPickerGrid');
   if (grid) {
     const isEmoji = !selectedIcon || !/^https?:\/\//.test(selectedIcon);
@@ -795,7 +648,6 @@ function selectIcon(icon, el) {
   selectedImageFile = null;
   document.querySelectorAll('.icon-opt').forEach(o => o.classList.remove('selected'));
   el.classList.add('selected');
-  // プレビューも更新
   const preview = document.getElementById('profileImagePreview');
   if (preview) preview.innerHTML = icon;
 }
@@ -844,9 +696,9 @@ function closeEditProfile() {
 }
 
 async function saveProfile() {
-  const name = document.getElementById('editName').value.trim();
+  const name  = document.getElementById('editName').value.trim();
   const bioEl = document.getElementById('editBio');
-  const bio  = bioEl ? bioEl.value.trim() : '';
+  const bio   = bioEl ? bioEl.value.trim() : '';
 
   if (!name) { showToast('名前を入力してください', 'error'); return; }
   if (name.length > 20) { showToast('名前は20文字以内で入力してください', 'error'); return; }
@@ -858,13 +710,11 @@ async function saveProfile() {
   try {
     let iconUrl = selectedIcon || currentUserData?.iconUrl || '👤';
 
-    // 画像ファイルが選択されている場合はFirebase Storageへアップロード
     if (selectedImageFile) {
       btn.textContent = '画像アップロード中…';
       try {
         iconUrl = await uploadProfileImage(selectedImageFile);
       } catch (uploadErr) {
-        // Storage 権限エラー等のフォールバック：絵文字を維持
         console.warn('画像アップロード失敗:', uploadErr.message);
         showToast('画像のアップロードに失敗しました。絵文字アイコンを使用します。', 'error');
         iconUrl = currentUserData?.iconUrl || '👤';
@@ -879,7 +729,6 @@ async function saveProfile() {
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     };
 
-    // 15秒タイムアウト付きで保存
     await Promise.race([
       db.collection('users').doc(currentUser.uid).update(updateData),
       new Promise((_, reject) =>
@@ -900,7 +749,6 @@ async function saveProfile() {
     const errMsgs = {
       'permission-denied': '保存権限がありません。ログインし直してください。',
       'unavailable':       'サービスが利用できません。しばらくしてから再試行してください。',
-      'not-found':         'ユーザーデータが見つかりません。',
       'TIMEOUT':           '保存がタイムアウトしました。ネットワーク接続を確認してください。',
     };
     const code = e.message === 'TIMEOUT' ? 'TIMEOUT' : (e.code?.split('/')[1] || '');
@@ -920,82 +768,24 @@ async function loadMyPage() {
     const doc = await db.collection('users').doc(currentUser.uid).get();
     if (!doc.exists) return;
     currentUserData = doc.data();
-    const d   = currentUserData;
+    const d = currentUserData;
 
     setAvatarEl(document.getElementById('mypageAvatar'), d.iconUrl);
-    document.getElementById('mypageName').textContent     = d.name;
-    document.getElementById('mypageMemberNo').textContent = 'MEMBER #' + (d.memberNumber || '—');
-
-    const rankInfo = calcRank(d.checkInCount || 0);
-    document.getElementById('mypageRankRow').innerHTML = `
-      <span class="badge badge-gold">${rankInfo.rank}</span>
-      <span class="badge badge-gray" style="margin-left:6px;">${d.title || '新参者'}</span>
-    `;
-
-    document.getElementById('mypagePoints').textContent      = (d.points || 0).toLocaleString();
-    document.getElementById('mypageTotalPoints').textContent = (d.totalPoints || 0).toLocaleString();
-    document.getElementById('mypageChips').textContent       = d.chips || 0;
-    document.getElementById('mypageCheckins').textContent    = d.checkInCount || 0;
-    document.getElementById('mypageEventJoins').textContent  = d.eventJoinCount || 0;
+    document.getElementById('mypageName').textContent   = d.name;
+    document.getElementById('mypagePoints').textContent = (d.points || 0).toLocaleString();
 
     const bioWrap = document.getElementById('mypageBioWrap');
     if (bioWrap) {
       const bio = d.bio || '';
       if (bio) {
-        bioWrap.textContent = bio;
+        bioWrap.textContent   = bio;
         bioWrap.style.display = '';
       } else {
         bioWrap.style.display = 'none';
       }
     }
-
-    const earned = d.badges || [];
-    document.getElementById('mypageBadges').innerHTML = BADGES_DEF.map(b => `
-      <div class="badge-item ${earned.includes(b.id) ? 'earned' : ''}">
-        <span class="badge-icon">${b.icon}</span>
-        <span class="badge-name">${b.name}</span>
-      </div>
-    `).join('');
-
-    loadPointLogs();
   } catch (e) {
     console.error('マイページ読み込みエラー:', e);
-  }
-}
-
-async function loadPointLogs() {
-  const container = document.getElementById('mypagePointLogs');
-  try {
-    // 複合インデックス不要なよう orderBy をJS側でソート
-    const snap = await db.collection('pointLogs')
-      .where('userId', '==', currentUser.uid)
-      .limit(30).get();
-
-    if (snap.empty) {
-      container.innerHTML = '<div class="empty-state"><p>履歴はありません</p></div>';
-      return;
-    }
-
-    const sorted = snap.docs.sort((a, b) => {
-      const at = a.data().createdAt?.toMillis?.() || 0;
-      const bt = b.data().createdAt?.toMillis?.() || 0;
-      return bt - at;
-    });
-
-    container.innerHTML = sorted.map(doc => {
-      const l    = doc.data();
-      const plus = l.amount > 0;
-      return `
-        <div class="log-row">
-          <div>
-            <div class="${plus ? 'log-amount-pos' : 'log-amount-neg'}">${plus ? '+' : ''}${l.amount}</div>
-            <div class="log-reason">${escHtml(l.reason || '')}</div>
-          </div>
-          <div class="log-time">${formatDate(l.createdAt)}</div>
-        </div>`;
-    }).join('');
-  } catch (e) {
-    container.innerHTML = '<div class="empty-state"><p>読み込みエラー</p></div>';
   }
 }
 

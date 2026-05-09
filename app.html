@@ -32,23 +32,14 @@
       <div class="avatar" id="homeAvatar" style="overflow:hidden;">👤</div>
       <div class="user-info">
         <div class="user-name" id="homeUserName">…</div>
-        <div class="user-rank-row" id="homeRankRow"></div>
       </div>
     </div>
 
-    <!-- スタッツ（3列） -->
-    <div class="stats-row" id="homeStats">
+    <!-- スタッツ（ポイントのみ） -->
+    <div id="homeStats" style="margin-bottom:16px;">
       <div class="stat-box gold-val">
         <div class="stat-val" id="statPoints">—</div>
-        <div class="stat-label">ポイント</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-val" id="statCheckins">—</div>
-        <div class="stat-label">来店回数</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-val" id="statChips">—</div>
-        <div class="stat-label">チップ</div>
+        <div class="stat-label">所持ポイント</div>
       </div>
     </div>
 
@@ -123,8 +114,6 @@
         <div class="avatar-edit-badge">✏</div>
       </div>
       <div class="profile-name" id="mypageName"></div>
-      <div class="profile-id" id="mypageMemberNo"></div>
-      <div class="profile-rank-row" id="mypageRankRow"></div>
       <button class="btn btn-outline btn-sm" onclick="openEditProfile()" style="margin-top:14px;">
         プロフィール編集
       </button>
@@ -133,39 +122,11 @@
     <!-- 自己紹介 -->
     <div id="mypageBioWrap" style="padding:0 4px 16px;font-size:13px;color:var(--text-sub);line-height:1.8;display:none;"></div>
 
-    <!-- ステータス詳細 -->
-    <div class="section-title" style="margin-top:0;">ステータス</div>
-    <div class="detail-list">
-      <div class="detail-row">
-        <span class="label">所持ポイント</span>
-        <span class="value gold" id="mypagePoints">—</span>
-      </div>
-      <div class="detail-row">
-        <span class="label">累計ポイント</span>
-        <span class="value" id="mypageTotalPoints">—</span>
-      </div>
-      <div class="detail-row">
-        <span class="label">チップ</span>
-        <span class="value" id="mypageChips">—</span>
-      </div>
-      <div class="detail-row">
-        <span class="label">来店回数</span>
-        <span class="value" id="mypageCheckins">—</span>
-      </div>
-      <div class="detail-row">
-        <span class="label">イベント参加数</span>
-        <span class="value" id="mypageEventJoins">—</span>
-      </div>
-    </div>
-
-    <!-- バッジ -->
-    <div class="section-title">バッジ</div>
-    <div class="badge-grid" id="mypageBadges"></div>
-
-    <!-- ポイント履歴 -->
-    <div class="section-title">ポイント履歴</div>
-    <div id="mypagePointLogs">
-      <div class="loading"><div class="spinner"></div> 読み込み中…</div>
+    <!-- 所持ポイント -->
+    <div class="section-title" style="margin-top:0;">所持ポイント</div>
+    <div class="stat-box gold-val" style="margin-bottom:16px;">
+      <div class="stat-val" id="mypagePoints">—</div>
+      <div class="stat-label">POINTS</div>
     </div>
 
   </div><!-- /tab-mypage -->
