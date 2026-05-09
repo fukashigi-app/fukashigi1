@@ -70,15 +70,11 @@
 
     <!-- お知らせ -->
     <div class="section-title">お知らせ</div>
-    <div id="homeNotices">
-      <div class="loading"><div class="spinner"></div> 読み込み中…</div>
-    </div>
+    <div id="homeNotices"></div>
 
     <!-- 直近のイベント -->
     <div class="section-title">次回イベント</div>
-    <div id="homeEvents">
-      <div class="loading"><div class="spinner"></div> 読み込み中…</div>
-    </div>
+    <div id="homeEvents"></div>
 
   </div><!-- /tab-home -->
 
@@ -86,31 +82,29 @@
   <div id="tab-events" class="tab-section">
     <div class="page-title">イベント</div>
 
-    <div class="tag-filter" id="categoryFilter">
-      <button class="tag-btn active" onclick="filterEvents('all',this)">すべて</button>
-      <button class="tag-btn" onclick="filterEvents('poker',this)">ポーカー</button>
-      <button class="tag-btn" onclick="filterEvents('smash',this)">スマブラ</button>
-      <button class="tag-btn" onclick="filterEvents('fishing',this)">釣り</button>
-      <button class="tag-btn" onclick="filterEvents('card',this)">カード</button>
-      <button class="tag-btn" onclick="filterEvents('other',this)">その他</button>
+    <!-- カレンダー -->
+    <div class="cal-wrap">
+      <div class="cal-header">
+        <button class="cal-nav" onclick="calPrev()">&#8249;</button>
+        <div class="cal-month-label" id="calMonthLabel"></div>
+        <button class="cal-nav" onclick="calNext()">&#8250;</button>
+      </div>
+      <div class="cal-grid-head">
+        <span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span>
+      </div>
+      <div class="cal-grid" id="calGrid"></div>
     </div>
 
-    <div id="eventsList">
-      <div class="loading"><div class="spinner"></div> 読み込み中…</div>
-    </div>
+    <!-- 日別イベント一覧 -->
+    <div class="section-title" style="margin-top:20px;" id="eventsDayTitle">イベント一覧</div>
+    <div id="eventsDayList"></div>
   </div><!-- /tab-events -->
 
   <!-- ===== CHAT ===== -->
   <div id="tab-chat" class="tab-section">
     <div class="page-title" style="margin-bottom:14px;">チャット</div>
 
-    <div class="chat-room-tabs">
-      <button class="tag-btn active" id="chatRoomGlobal" onclick="switchChatRoom('global',this)">🌐 全体</button>
-    </div>
-
-    <div id="chatMessages" class="chat-messages-list">
-      <div class="loading"><div class="spinner"></div> 読み込み中…</div>
-    </div>
+    <div id="chatMessages" class="chat-messages-list"></div>
 
     <div class="chat-input-area">
       <textarea class="chat-input" id="chatInput" placeholder="メッセージを入力…" rows="1"
@@ -136,11 +130,14 @@
       </button>
     </div>
 
+    <!-- 自己紹介 -->
+    <div id="mypageBioWrap" style="padding:0 4px 16px;font-size:13px;color:var(--text-sub);line-height:1.8;display:none;"></div>
+
     <!-- ステータス詳細 -->
     <div class="section-title" style="margin-top:0;">ステータス</div>
     <div class="detail-list">
       <div class="detail-row">
-        <span class="label">現在ポイント</span>
+        <span class="label">所持ポイント</span>
         <span class="value gold" id="mypagePoints">—</span>
       </div>
       <div class="detail-row">
@@ -249,6 +246,11 @@
     <div class="form-group">
       <label class="form-label">表示名</label>
       <input type="text" class="form-input" id="editName" maxlength="20" placeholder="名前を入力してください">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">自己紹介文</label>
+      <textarea class="form-textarea" id="editBio" maxlength="200" placeholder="自己紹介を入力してください（200文字以内）" style="min-height:80px;"></textarea>
     </div>
 
     <button class="btn btn-gold btn-block" id="saveProfileBtn" onclick="saveProfile()">保存する</button>

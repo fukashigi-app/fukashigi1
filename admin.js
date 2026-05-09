@@ -837,7 +837,7 @@ async function postNotice() {
   if (!body)  { showToast('本文を入力してください', 'error'); return; }
 
   try {
-    await db.collection('notices').add({
+    await db.collection('announcements').add({
       title, body, pinned,
       createdBy: adminUserData.name || 'admin',
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -856,8 +856,7 @@ async function loadNotices() {
   const container = document.getElementById('noticeList');
   if (!container) return;
   try {
-    const snap = await db.collection('notices')
-      .orderBy('pinned', 'desc')
+    const snap = await db.collection('announcements')
       .orderBy('createdAt', 'desc')
       .limit(20).get();
 
@@ -877,9 +876,6 @@ async function loadNotices() {
               <div class="notice-meta">${formatDate(n.createdAt)} — ${escHtml(n.createdBy||'')}</div>
             </div>
             <div style="display:flex;gap:6px;flex-shrink:0;">
-              <button class="btn btn-outline btn-sm" onclick="toggleNoticePinned('${doc.id}',${n.pinned})">
-                ${n.pinned ? '固定解除' : '固定'}
-              </button>
               <button class="btn btn-danger btn-sm" onclick="deleteNotice('${doc.id}')">削除</button>
             </div>
           </div>
@@ -890,15 +886,9 @@ async function loadNotices() {
   }
 }
 
-async function toggleNoticePinned(id, pinned) {
-  await db.collection('notices').doc(id).update({ pinned: !pinned });
-  showToast(pinned ? '固定を解除しました' : '固定しました', 'success');
-  loadNotices();
-}
-
 async function deleteNotice(id) {
   if (!confirm('このお知らせを削除しますか？')) return;
-  await db.collection('notices').doc(id).delete();
+  await db.collection('announcements').doc(id).delete();
   showToast('削除しました', 'info');
   loadNotices();
 }

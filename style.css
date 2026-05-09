@@ -1493,3 +1493,139 @@ body {
   flex-shrink: 0;
 }
 .account-status-dot.disabled { background: var(--text-muted); }
+
+/* ===========================
+   カレンダー
+=========================== */
+
+.cal-wrap {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.cal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.cal-month-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.04em;
+}
+
+.cal-nav {
+  background: none;
+  border: none;
+  color: var(--gold);
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0 8px;
+  line-height: 1;
+}
+.cal-nav:hover { color: var(--gold-light); }
+
+.cal-grid-head {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  border-bottom: 1px solid var(--border);
+}
+.cal-grid-head span {
+  text-align: center;
+  font-size: 11px;
+  font-family: 'Inter', sans-serif;
+  color: var(--text-muted);
+  padding: 6px 0;
+}
+.cal-grid-head span:first-child { color: #C0392B; }
+.cal-grid-head span:last-child  { color: #2980B9; }
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0;
+}
+
+.cal-cell {
+  position: relative;
+  text-align: center;
+  padding: 8px 2px;
+  font-size: 13px;
+  font-family: 'Inter', sans-serif;
+  color: var(--text-sub);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+.cal-cell:hover { background: var(--bg-card2); }
+.cal-cell.empty { cursor: default; }
+.cal-cell.today {
+  color: var(--gold);
+  font-weight: 800;
+}
+.cal-cell.has-event { font-weight: 700; color: var(--text); }
+
+.cal-dot {
+  display: block;
+  width: 5px;
+  height: 5px;
+  background: var(--gold);
+  border-radius: 50%;
+  margin: 2px auto 0;
+}
+
+/* ===========================
+   日別イベント一覧
+=========================== */
+
+.day-group {
+  margin-bottom: 20px;
+  scroll-margin-top: 80px;
+}
+
+.day-group-header {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--gold);
+  font-family: 'Inter', 'Noto Sans JP', sans-serif;
+  padding: 8px 0 10px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 10px;
+  letter-spacing: 0.02em;
+}
+
+.day-event-item {
+  padding: 8px 4px 8px 8px;
+  border-left: 2px solid var(--border-light);
+  margin-bottom: 10px;
+}
+
+.day-event-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.day-event-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: 'Inter', sans-serif;
+  margin-bottom: 2px;
+}
+
+.day-event-desc {
+  font-size: 12px;
+  color: var(--text-sub);
+  line-height: 1.6;
+  margin-top: 4px;
+  white-space: pre-line;
+}
