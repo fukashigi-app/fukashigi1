@@ -1,5 +1,5 @@
 const firebaseConfig = {
-  apiKey: "AIzaSyDt2LBQ7W_k2XGOYw273AozZ2-sY2i4z6k",
+  apiKey: "AIzaSyDt2LBQ7W_k2XGOYw273Aoz72-sY2i4z6k",
   authDomain: "fukashigi-1.firebaseapp.com",
   projectId: "fukashigi-1",
   storageBucket: "fukashigi-1.firebasestorage.app",
@@ -8,11 +8,9 @@ const firebaseConfig = {
   measurementId: "G-7S8QM44H4Q"
 };
 
-// Firebaseの初期化
 if (!firebase.apps.length) {
   firebase.initializeApp(firebaseConfig);
 }
 
-// グローバル変数にセット
 window.auth = firebase.auth();
 window.db = firebase.firestore();
