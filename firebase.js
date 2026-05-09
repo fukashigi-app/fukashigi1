@@ -1,7 +1,4 @@
-// ※ import はエラーになるので使いません！
-
 const firebaseConfig = {
-  // ⚠️ 弾かれていたAPIキーの「72」を「Z2」に直しています！
   apiKey: "AIzaSyDt2LBQ7W_k2XGOYw273AozZ2-sY2i4z6k",
   authDomain: "fukashigi-1.firebaseapp.com",
   projectId: "fukashigi-1",
@@ -11,9 +8,10 @@ const firebaseConfig = {
   measurementId: "G-7S8QM44H4Q"
 };
 
-// Firebaseの初期化（今のHTMLに合わせたCompat版の書き方）
-firebase.initializeApp(firebaseConfig);
+// 念のため、初期化の前に既存のインスタンスを確認
+if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+}
 
-// index.html のボタンを押した時に auth と db をそのまま使えるようにする魔法
 window.auth = firebase.auth();
 window.db = firebase.firestore();
