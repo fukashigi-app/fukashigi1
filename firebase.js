@@ -4,7 +4,6 @@
 // Firebaseコンソール（https://console.firebase.google.com/）で
 // プロジェクトを作成し、以下の値を設定してください。
 
-const firebaseConfig = {
  const firebaseConfig = {
   apiKey: "AIzaSyDt2LBQ7W_k2XGOYw273Aoz72-sY2i4z6k", 
   authDomain: "fukashigi-1.firebaseapp.com",
