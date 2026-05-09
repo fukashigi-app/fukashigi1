@@ -21,7 +21,7 @@
   </div>
 </header>
 
-<!-- メインコンテンツ -->
+<!-- メインコンテンツ（通常タブ用） -->
 <div class="main-content">
 
   <!-- ===== HOME ===== -->
@@ -37,7 +37,7 @@
     </div>
 
     <!-- スタッツ（3列） -->
-    <div class="stats-row" id="homeStats">
+    <div class="stats-row">
       <div class="stat-box gold-val">
         <div class="stat-val" id="statPoints">—</div>
         <div class="stat-label">ポイント</div>
@@ -62,10 +62,8 @@
 
     <!-- 今日の来店メンバー -->
     <div class="section-title">今日の来店</div>
-    <div id="todayMembersWrap">
-      <div class="today-members-scroll" id="todayMembers">
-        <div style="font-size:13px;color:var(--text-muted);padding:8px 0;">読み込み中…</div>
-      </div>
+    <div class="today-members-scroll" id="todayMembers">
+      <div style="font-size:13px;color:var(--text-muted);padding:8px 0;">読み込み中…</div>
     </div>
 
     <!-- お知らせ -->
@@ -86,7 +84,7 @@
   <div id="tab-events" class="tab-section">
     <div class="page-title">イベント</div>
 
-    <div class="tag-filter" id="categoryFilter">
+    <div class="tag-filter">
       <button class="tag-btn active" onclick="filterEvents('all',this)">すべて</button>
       <button class="tag-btn" onclick="filterEvents('poker',this)">ポーカー</button>
       <button class="tag-btn" onclick="filterEvents('smash',this)">スマブラ</button>
@@ -99,6 +97,22 @@
       <div class="loading"><div class="spinner"></div> 読み込み中…</div>
     </div>
   </div><!-- /tab-events -->
+
+  <!-- ===== RANKING ===== -->
+  <div id="tab-ranking" class="tab-section">
+    <div class="page-title">ランキング</div>
+
+    <!-- ランキング種別タブ -->
+    <div class="tag-filter" id="rankingTypeFilter">
+      <button class="tag-btn active" onclick="switchRankingType('points', this)">ポイント</button>
+      <button class="tag-btn" onclick="switchRankingType('checkins', this)">来店回数</button>
+      <button class="tag-btn" onclick="switchRankingType('events', this)">イベント参加</button>
+    </div>
+
+    <div id="rankingList">
+      <div class="loading"><div class="spinner"></div> 読み込み中…</div>
+    </div>
+  </div><!-- /tab-ranking -->
 
   <!-- ===== MYPAGE ===== -->
   <div id="tab-mypage" class="tab-section">
@@ -150,7 +164,31 @@
 
 </div><!-- /main-content -->
 
-<!-- ボトムナビ -->
+<!-- ===== CHAT（固定フルスクリーンレイアウト） ===== -->
+<div id="tab-chat" class="tab-section chat-layout">
+  <div class="chat-inner">
+    <div class="chat-room-header">
+      <div class="chat-room-title">💬 全体チャット</div>
+      <div class="chat-room-badge" id="chatOnlineCount"></div>
+    </div>
+    <div class="chat-messages" id="chatMessages">
+      <div class="loading"><div class="spinner"></div> 読み込み中…</div>
+    </div>
+    <div class="chat-input-bar">
+      <input
+        type="text"
+        class="form-input"
+        id="chatInput"
+        placeholder="メッセージを入力…"
+        maxlength="400"
+        autocomplete="off"
+      >
+      <button class="btn btn-gold btn-sm" onclick="sendMessage()" style="flex-shrink:0;">送信</button>
+    </div>
+  </div>
+</div>
+
+<!-- ボトムナビ（5タブ） -->
 <nav class="bottom-nav">
   <button class="nav-item active" id="nav-home" onclick="switchTab('home')">
     <span class="nav-icon">🏠</span>
@@ -159,6 +197,14 @@
   <button class="nav-item" id="nav-events" onclick="switchTab('events')">
     <span class="nav-icon">📅</span>
     <span>イベント</span>
+  </button>
+  <button class="nav-item" id="nav-chat" onclick="switchTab('chat')">
+    <span class="nav-icon">💬</span>
+    <span>チャット</span>
+  </button>
+  <button class="nav-item" id="nav-ranking" onclick="switchTab('ranking')">
+    <span class="nav-icon">🏆</span>
+    <span>ランキング</span>
   </button>
   <button class="nav-item" id="nav-mypage" onclick="switchTab('mypage')">
     <span class="nav-icon">👤</span>
@@ -179,7 +225,6 @@
     </p>
     <div class="qr-scanner-wrap">
       <div id="qr-reader"></div>
-      <!-- 四隅フレーム -->
       <div class="qr-corner-overlay">
         <div class="qr-corners">
           <span class="qr-corner tl"></span>

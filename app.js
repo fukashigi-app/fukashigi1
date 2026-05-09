@@ -9,6 +9,13 @@ let currentFilter   = 'all';
 let qrScanner       = null;
 let selectedEvent   = null;
 
+// チャット
+let chatUnsubscribe = null;
+let chatInitialized = false;
+
+// ランキング
+let currentRankingType = 'points';
+
 // ========================================
 // 初期化・認証
 // ========================================
@@ -42,7 +49,6 @@ async function loadUserData() {
     currentUserData = data;
   } else {
     currentUserData = doc.data();
-    // ランクと称号を自動更新
     const rankInfo = calcRank(currentUserData.checkInCount || 0);
     const title    = calcTitle(currentUserData.checkInCount || 0, currentUserData.eventJoinCount || 0);
     if (currentUserData.rank !== rankInfo.rank || currentUserData.title !== title) {
@@ -55,6 +61,7 @@ async function loadUserData() {
 }
 
 function doLogout() {
+  if (chatUnsubscribe) { chatUnsubscribe(); chatUnsubscribe = null; }
   auth.signOut().then(() => { window.location.href = 'index.html'; });
 }
 
@@ -67,7 +74,10 @@ function switchTab(tab) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('tab-' + tab).classList.add('active');
   document.getElementById('nav-' + tab).classList.add('active');
-  if (tab === 'mypage') loadMyPage();
+
+  if (tab === 'mypage')   loadMyPage();
+  else if (tab === 'chat')    initChat();
+  else if (tab === 'ranking') loadRanking();
 }
 
 // ========================================
@@ -81,28 +91,19 @@ function loadHome() {
   document.getElementById('headerUserName').textContent = d.name;
   document.getElementById('homeUserName').textContent   = d.name;
 
-  // ランク・称号バッジ
   const rankInfo = calcRank(d.checkInCount || 0);
   document.getElementById('homeRankRow').innerHTML = `
     <span class="badge badge-gold" style="font-size:11px;">${rankInfo.rank}</span>
     <span class="badge badge-gray" style="font-size:11px;">${d.title || '新参者'}</span>
   `;
 
-  // スタッツ
   document.getElementById('statPoints').textContent   = (d.points || 0).toLocaleString();
   document.getElementById('statCheckins').textContent = d.checkInCount || 0;
   document.getElementById('statChips').textContent    = d.chips || 0;
 
-  // 今日チェックイン済みか
   checkTodayCheckIn();
-
-  // 今日の来店メンバー
   loadTodayMembers();
-
-  // お知らせ
   loadNotices();
-
-  // 直近イベント
   loadHomeEvents();
 }
 
@@ -123,7 +124,7 @@ async function checkTodayCheckIn() {
 }
 
 async function loadTodayMembers() {
-  const today   = todayStr();
+  const today     = todayStr();
   const container = document.getElementById('todayMembers');
   try {
     const snap = await db.collection('checkins')
@@ -136,7 +137,7 @@ async function loadTodayMembers() {
       return;
     }
     container.innerHTML = snap.docs.map(doc => {
-      const c = doc.data();
+      const c       = doc.data();
       const initial = (c.userName || '?').charAt(0);
       return `
         <div class="today-member-item">
@@ -186,7 +187,6 @@ async function loadHomeEvents() {
       .limit(10).get();
 
     const upcoming = snap.docs.filter(d => (d.data().date || '') >= today);
-
     if (upcoming.length === 0) {
       container.innerHTML = '<div class="empty-state"><p>予定されているイベントはありません</p></div>';
       return;
@@ -235,12 +235,10 @@ function filterEvents(cat, btn) {
   renderEventsList();
 }
 
-// イベントカード（日付を左に大きく表示）
 function renderEventCard(id, ev) {
   const joined = (ev.participants || []).includes(currentUser?.uid || '');
   const count  = (ev.participants || []).length;
 
-  // 日付パース
   let month = '', day = '', wd = '';
   if (ev.date) {
     const d = new Date(ev.date + 'T00:00:00');
@@ -295,7 +293,7 @@ async function openEventModal(eventId) {
         ${dRow('参加者', count + (ev.capacity > 0 ? ' / ' + ev.capacity : '') + '名')}
       </div>
     </div>
-    ${ev.description ? `<div style="background:var(--bg-card2);border-radius:6px;padding:14px;font-size:13px;line-height:1.8;color:var(--text-sub);white-space:pre-line;margin-bottom:18px;">${escHtml(ev.description)}</div>` : ''}
+    ${ev.description ? `<div style="background:var(--bg-card2);border-radius:8px;padding:14px;font-size:13px;line-height:1.8;color:var(--text-sub);white-space:pre-line;margin-bottom:18px;">${escHtml(ev.description)}</div>` : ''}
     <button class="btn ${joined ? 'btn-danger' : 'btn-gold'} btn-block"
             id="joinCancelBtn"
             onclick="toggleJoin('${eventId}', ${joined})">
@@ -395,7 +393,7 @@ async function onQRSuccess(text) {
     return;
   }
 
-  const batch     = db.batch();
+  const batch      = db.batch();
   const checkinRef = db.collection('checkins').doc();
   batch.set(checkinRef, {
     userId:      currentUser.uid,
@@ -427,9 +425,9 @@ async function onQRSuccess(text) {
 function showQRMessage(msg, color) {
   const el = document.getElementById('qrMessage');
   el.textContent = msg;
-  el.style.color  = color;
+  el.style.color      = color;
   el.style.background = 'var(--bg-card2)';
-  el.style.display = 'block';
+  el.style.display    = 'block';
 }
 
 function closeQRScanner() {
@@ -494,13 +492,12 @@ async function loadMyPage() {
     <span class="badge badge-gray" style="margin-left:6px;">${d.title || '新参者'}</span>
   `;
 
-  document.getElementById('mypagePoints').textContent     = (d.points || 0).toLocaleString();
+  document.getElementById('mypagePoints').textContent      = (d.points || 0).toLocaleString();
   document.getElementById('mypageTotalPoints').textContent = (d.totalPoints || 0).toLocaleString();
-  document.getElementById('mypageChips').textContent      = d.chips || 0;
-  document.getElementById('mypageCheckins').textContent   = d.checkInCount || 0;
-  document.getElementById('mypageEventJoins').textContent = d.eventJoinCount || 0;
+  document.getElementById('mypageChips').textContent       = d.chips || 0;
+  document.getElementById('mypageCheckins').textContent    = d.checkInCount || 0;
+  document.getElementById('mypageEventJoins').textContent  = d.eventJoinCount || 0;
 
-  // バッジ
   const earned = d.badges || [];
   document.getElementById('mypageBadges').innerHTML = BADGES_DEF.map(b => `
     <div class="badge-item ${earned.includes(b.id) ? 'earned' : ''}">
@@ -542,14 +539,181 @@ async function loadPointLogs() {
 }
 
 // ========================================
+// チャット
+// ========================================
+
+function initChat() {
+  if (chatInitialized) return;
+  chatInitialized = true;
+
+  const container = document.getElementById('chatMessages');
+
+  // Firestore リアルタイムリスン（インデックス不要のシンプルクエリ）
+  chatUnsubscribe = db.collection('chats')
+    .orderBy('createdAt', 'asc')
+    .limit(200)
+    .onSnapshot(snap => {
+      const messages = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(m => m.roomId === 'global' && m.deleted !== true);
+
+      if (messages.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">💬</div>
+            <p>まだメッセージがありません<br>最初のメッセージを送ってみよう</p>
+          </div>`;
+        return;
+      }
+
+      // 差分更新せず全再描画（MVP用）
+      container.innerHTML = messages.map(renderChatMessage).join('');
+      container.scrollTop = container.scrollHeight;
+    }, err => {
+      console.error('Chat error:', err);
+      container.innerHTML = '<div class="empty-state"><p>チャットを読み込めませんでした</p></div>';
+    });
+
+  // Enterキー送信
+  document.getElementById('chatInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.isComposing) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+}
+
+function renderChatMessage(msg) {
+  const isOwn = msg.userId === currentUser?.uid;
+  const time  = msg.createdAt
+    ? formatChatTime(msg.createdAt.toDate ? msg.createdAt.toDate() : new Date(msg.createdAt))
+    : '';
+  return `
+    <div class="chat-msg ${isOwn ? 'own' : ''}">
+      <div class="chat-msg-header">
+        <span class="chat-msg-name ${isOwn ? 'own' : ''}">${escHtml(msg.userName)}</span>
+        <span class="chat-msg-time">${time}</span>
+      </div>
+      <div class="chat-msg-text">${escHtml(msg.message)}</div>
+    </div>`;
+}
+
+function formatChatTime(date) {
+  const now     = new Date();
+  const isToday = date.toDateString() === now.toDateString();
+  if (isToday) {
+    return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+  }
+  return date.toLocaleDateString('ja-JP', { month: '2-digit', day: '2-digit' })
+    + ' ' + date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+}
+
+async function sendMessage() {
+  const input = document.getElementById('chatInput');
+  const msg   = input.value.trim();
+  if (!msg || !currentUser) return;
+
+  input.value    = '';
+  input.disabled = true;
+
+  try {
+    await db.collection('chats').add({
+      roomId:    'global',
+      userId:    currentUser.uid,
+      userName:  currentUserData.name,
+      message:   msg,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      deleted:   false,
+    });
+  } catch (e) {
+    showToast('送信に失敗しました', 'error');
+    input.value = msg;
+  } finally {
+    input.disabled = false;
+    input.focus();
+  }
+}
+
+// ========================================
+// ランキング
+// ========================================
+
+async function loadRanking() {
+  const container = document.getElementById('rankingList');
+  container.innerHTML = '<div class="loading"><div class="spinner"></div> 読み込み中…</div>';
+
+  try {
+    const orderField = {
+      points:   'points',
+      checkins: 'checkInCount',
+      events:   'eventJoinCount',
+    }[currentRankingType] || 'points';
+
+    const snap = await db.collection('users')
+      .orderBy(orderField, 'desc')
+      .limit(30).get();
+
+    const members = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    if (members.length === 0) {
+      container.innerHTML = '<div class="empty-state"><div class="empty-icon">🏆</div><p>データがありません</p></div>';
+      return;
+    }
+
+    container.innerHTML = members.map((m, i) => renderRankingRow(m, i)).join('');
+  } catch (e) {
+    container.innerHTML = '<div class="empty-state"><p>読み込みエラー</p></div>';
+  }
+}
+
+function renderRankingRow(member, index) {
+  const rankInfo   = calcRank(member.checkInCount || 0);
+  const isMe       = member.id === currentUser?.uid;
+  const medals     = ['🥇', '🥈', '🥉'];
+  const isTop3     = index < 3;
+
+  const valueMap = {
+    points:   (member.points || 0).toLocaleString() + ' pt',
+    checkins: (member.checkInCount || 0) + ' 回',
+    events:   (member.eventJoinCount || 0) + ' 回',
+  };
+  const displayValue = valueMap[currentRankingType] || valueMap.points;
+
+  return `
+    <div class="ranking-row ${isTop3 ? 'top3' : ''} ${index === 0 ? 'top1' : ''} ${isMe ? 'is-me' : ''} fade-in">
+      <div class="${isTop3 ? 'ranking-medal' : 'ranking-num'}">
+        ${isTop3 ? medals[index] : index + 1}
+      </div>
+      <div class="member-avatar-sm" style="font-size:14px;">${(member.name || '?').charAt(0)}</div>
+      <div class="ranking-info">
+        <div class="ranking-name">${escHtml(member.name || '—')}${isMe ? ' <span style="color:var(--gold);font-size:11px;">(自分)</span>' : ''}</div>
+        <div class="ranking-sub">
+          <span style="color:${rankInfo.color};font-weight:700;">${rankInfo.rank}</span>
+          &nbsp;•&nbsp; 来店${member.checkInCount || 0}回
+        </div>
+      </div>
+      <div class="ranking-pts">
+        <div class="pts">${displayValue}</div>
+      </div>
+    </div>`;
+}
+
+function switchRankingType(type, btn) {
+  currentRankingType = type;
+  document.querySelectorAll('#rankingTypeFilter .tag-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  loadRanking();
+}
+
+// ========================================
 // ユーティリティ
 // ========================================
 
 function showToast(msg, type = 'info') {
   const container = document.getElementById('toastContainer');
-  const el = document.createElement('div');
-  el.className = `toast toast-${type}`;
-  el.textContent = msg;
+  const el        = document.createElement('div');
+  el.className    = `toast toast-${type}`;
+  el.textContent  = msg;
   container.appendChild(el);
   setTimeout(() => el.classList.add('show'), 10);
   setTimeout(() => {

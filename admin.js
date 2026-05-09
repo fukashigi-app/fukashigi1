@@ -6,7 +6,8 @@ let adminUser     = null;
 let adminUserData = null;
 let allMembers    = [];
 let allMembersFiltered = [];
-let currentSection = 'dashboard';
+let currentSection   = 'dashboard';
+let chatAdminFilter  = 'global';
 
 // ========================================
 // 初期化・認証
@@ -52,6 +53,7 @@ function switchSection(sec, btn) {
     points:    () => { loadPointLog(); loadMemberSelect(); },
     notices:   loadNotices,
     qr:        generateQR,
+    chat:      loadChatAdmin,
   };
   if (loaders[sec]) loaders[sec]();
 }
@@ -615,6 +617,67 @@ function generateQR() {
   });
 
   document.getElementById('qrCodeText').textContent = code;
+}
+
+// ========================================
+// チャット管理
+// ========================================
+
+async function loadChatAdmin() {
+  const container = document.getElementById('chatAdminList');
+  if (!container) return;
+  container.innerHTML = '<div class="loading"><div class="spinner"></div> 読み込み中…</div>';
+
+  try {
+    const snap = await db.collection('chats')
+      .orderBy('createdAt', 'desc')
+      .limit(100).get();
+
+    const messages = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(m => m.roomId === chatAdminFilter && m.deleted !== true);
+
+    if (messages.length === 0) {
+      container.innerHTML = '<div class="empty-state"><div class="empty-icon">💬</div><p>メッセージがありません</p></div>';
+      return;
+    }
+
+    container.innerHTML = messages.map(m => `
+      <div class="chat-admin-row">
+        <div class="chat-admin-info">
+          <div style="font-weight:700;font-size:14px;color:var(--text);margin-bottom:4px;">
+            ${escHtml(m.userName || '—')}
+          </div>
+          <div style="font-size:13px;color:var(--text-sub);margin-bottom:6px;word-break:break-word;">
+            ${escHtml(m.message || '')}
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);font-family:'Inter',sans-serif;">
+            ${formatDate(m.createdAt)} — ${escHtml(m.roomId || '')}
+          </div>
+        </div>
+        <button class="btn btn-danger btn-sm" style="flex-shrink:0;" onclick="deleteChatMsg('${m.id}')">削除</button>
+      </div>`).join('');
+  } catch (e) {
+    container.innerHTML = '<div class="empty-state"><p>読み込みエラー: ' + escHtml(e.message) + '</p></div>';
+  }
+}
+
+function filterAdminChat(roomId, btn) {
+  chatAdminFilter = roomId;
+  document.querySelectorAll('[id^="chatFilterBtn-"]').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  loadChatAdmin();
+}
+
+async function deleteChatMsg(id) {
+  if (!confirm('このメッセージを削除しますか？\n（メンバーのチャット画面からも即時非表示になります）')) return;
+  try {
+    await db.collection('chats').doc(id).update({ deleted: true });
+    showToast('メッセージを削除しました', 'success');
+    loadChatAdmin();
+  } catch (e) {
+    showToast('エラー: ' + e.message, 'error');
+  }
 }
 
 // ========================================
