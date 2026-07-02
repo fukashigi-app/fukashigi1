@@ -265,6 +265,59 @@ async function quickApplyPoints(uid) {
 // アカウント管理
 // ========================================
 
+async function createNewAccount() {
+  const name     = document.getElementById('newAccName').value.trim();
+  const email    = document.getElementById('newAccEmail').value.trim();
+  const password = document.getElementById('newAccPassword').value;
+
+  if (!name)                    { showToast('表示名を入力してください', 'error'); return; }
+  if (!email)                   { showToast('メールアドレスを入力してください', 'error'); return; }
+  if (!password || password.length < 6) { showToast('パスワードは6文字以上で入力してください', 'error'); return; }
+
+  const btn = document.getElementById('createAccBtn');
+  btn.disabled = true;
+  btn.textContent = '作成中…';
+
+  try {
+    // セカンダリAppで作成することで管理者のセッションを維持する
+    const secondaryApp = firebase.apps.find(a => a.name === 'secondary')
+      || firebase.initializeApp(firebaseConfig, 'secondary');
+    const secondaryAuth = firebase.app('secondary').auth();
+
+    const cred = await secondaryAuth.createUserWithEmailAndPassword(email, password);
+    const uid  = cred.user.uid;
+    await secondaryAuth.signOut();
+
+    await db.collection('users').doc(uid).set({
+      uid,
+      name,
+      email,
+      iconUrl:   '',
+      bio:       '',
+      role:      'member',
+      points:    0,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+
+    showToast(`アカウントを作成しました: ${name}`, 'success');
+    document.getElementById('newAccName').value     = '';
+    document.getElementById('newAccEmail').value    = '';
+    document.getElementById('newAccPassword').value = '';
+    loadAccounts();
+  } catch (e) {
+    const errMsgs = {
+      'auth/email-already-in-use': 'このメールアドレスはすでに使用されています',
+      'auth/invalid-email':        'メールアドレスの形式が正しくありません',
+      'auth/weak-password':        'パスワードが弱すぎます（6文字以上にしてください）',
+    };
+    showToast(errMsgs[e.code] || 'エラー: ' + e.message, 'error');
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = 'アカウント作成';
+  }
+}
+
 async function loadAccounts() {
   const container = document.getElementById('accountList');
   try {
