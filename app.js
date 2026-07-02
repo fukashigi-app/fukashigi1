@@ -12,9 +12,6 @@ let selectedEvent   = null;
 let calYear  = new Date().getFullYear();
 let calMonth = new Date().getMonth();
 
-// チャット
-let chatUnsubscribe = null;
-
 // プロフィール編集
 let selectedIcon      = null;
 let selectedImageFile = null;
@@ -67,7 +64,6 @@ async function loadUserData() {
 }
 
 function doLogout() {
-  if (chatUnsubscribe) chatUnsubscribe();
   auth.signOut().then(() => { window.location.href = 'index.html'; });
 }
 
@@ -102,9 +98,9 @@ function switchTab(tab) {
   const navEl = document.getElementById('nav-' + tab);
   if (navEl) navEl.classList.add('active');
 
-  if (tab === 'mypage') loadMyPage();
-  if (tab === 'chat')   loadChat();
-  if (tab === 'events') { renderCalendar(); renderDayList(); }
+  if (tab === 'mypage')   loadMyPage();
+  if (tab === 'ranking')  loadRanking();
+  if (tab === 'events')   { renderCalendar(); renderDayList(); }
 }
 
 // ========================================
@@ -490,128 +486,35 @@ function closeQRScanner() {
 }
 
 // ========================================
-// チャット
+// ランキング
 // ========================================
 
-function loadChat() {
-  if (chatUnsubscribe) {
-    chatUnsubscribe();
-    chatUnsubscribe = null;
-  }
-
-  const container = document.getElementById('chatMessages');
-  container.innerHTML = '';
-
-  // 24時間以内のメッセージのみ取得
-  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const firestoreCutoff = firebase.firestore.Timestamp.fromDate(cutoff);
-
-  chatUnsubscribe = db
-    .collection('chats')
-    .where('createdAt', '>=', firestoreCutoff)
-    .orderBy('createdAt', 'asc')
-    .limit(100)
-    .onSnapshot(snap => {
-      renderChatMessages(snap.docs);
-    }, err => {
-      const errMsg = err.code === 'permission-denied'
-        ? 'チャットの読み込み権限がありません。'
-        : '読み込みエラー: ' + err.message;
-      container.innerHTML = `<div class="chat-system-msg">${escHtml(errMsg)}</div>`;
-    });
-}
-
-function renderChatMessages(docs) {
-  const container = document.getElementById('chatMessages');
-  const wasAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 60;
-
-  if (docs.length === 0) {
-    container.innerHTML = '<div class="chat-system-msg">まだメッセージがありません。最初のメッセージを送ってみましょう！</div>';
-    return;
-  }
-
-  container.innerHTML = docs.map(doc => {
-    const m   = doc.data();
-    const own = m.uid === currentUser?.uid;
-    const iconHtml = avatarContent(m.iconUrl || m.userIcon);
-    const canDelete = own || (currentUserData?.role === 'admin');
-    const timeStr = m.createdAt ? formatTimeOnly(m.createdAt) : '';
-    const nameLabel = escHtml(m.name || '—');
-
-    return `
-      <div class="chat-msg ${own ? 'own' : ''}">
-        <div class="chat-avatar-col">
-          <div class="chat-avatar">${iconHtml}</div>
-          <div class="chat-username">${nameLabel}</div>
-        </div>
-        <div class="chat-content">
-          <div class="chat-bubble">${escHtml(m.message)}</div>
-          <div class="chat-time-row">
-            <span class="chat-time">${timeStr}</span>
-            ${canDelete ? `<button class="chat-delete" onclick="deleteChatMessage('${doc.id}')">削除</button>` : ''}
-          </div>
-        </div>
-      </div>`;
-  }).join('');
-
-  if (wasAtBottom) {
-    container.scrollTop = container.scrollHeight;
-  }
-}
-
-async function sendChatMessage() {
-  const input   = document.getElementById('chatInput');
-  const message = input.value.trim();
-  if (!message || !currentUser) return;
-
-  const btn = document.getElementById('chatSendBtn');
-  btn.disabled = true;
-  const savedMsg = input.value;
-  input.value = '';
-  autoResizeChatInput(input);
-
+async function loadRanking() {
+  const container = document.getElementById('rankingList');
+  if (!container) return;
+  container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);">読み込み中…</div>';
   try {
-    await db.collection('chats').add({
-      uid:      currentUser.uid,
-      name:     currentUserData?.name || '名無し',
-      iconUrl:  currentUserData?.iconUrl || '',
-      message,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-    });
+    const snap = await db.collection('users').orderBy('points', 'desc').limit(30).get();
+    if (snap.empty) {
+      container.innerHTML = '<div class="empty-state"><p>メンバーがいません</p></div>';
+      return;
+    }
+    container.innerHTML = snap.docs.map((doc, idx) => {
+      const u    = doc.data();
+      const rank = idx + 1;
+      const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank;
+      const isMe  = doc.id === currentUser?.uid;
+      return `
+        <div class="ranking-row${isMe ? ' ranking-me' : ''}">
+          <div class="ranking-rank">${medal}</div>
+          <div class="ranking-avatar">${avatarContent(u.iconUrl)}</div>
+          <div class="ranking-name">${escHtml(u.name || '—')}</div>
+          <div class="ranking-points">${(u.points || 0).toLocaleString()}<span class="ranking-pt-label">pt</span></div>
+        </div>`;
+    }).join('');
   } catch (e) {
-    const errMsgs = {
-      'permission-denied': '送信権限がありません。ログインし直してください。',
-      'unavailable':       'ネットワークエラーが発生しました。接続を確認してください。',
-    };
-    const code = e.code?.split('/')[1] || '';
-    showToast(errMsgs[code] || '送信に失敗しました：' + e.message, 'error');
-    input.value = savedMsg;
-    autoResizeChatInput(input);
-  } finally {
-    btn.disabled = false;
-    input.focus();
+    container.innerHTML = '<div class="empty-state"><p>読み込みエラー</p></div>';
   }
-}
-
-async function deleteChatMessage(msgId) {
-  if (!confirm('このメッセージを削除しますか？')) return;
-  try {
-    await db.collection('chats').doc(msgId).delete();
-  } catch (e) {
-    showToast('削除に失敗しました', 'error');
-  }
-}
-
-function chatKeyDown(e) {
-  if (e.key === 'Enter' && !e.shiftKey && window.innerWidth >= 600) {
-    e.preventDefault();
-    sendChatMessage();
-  }
-}
-
-function autoResizeChatInput(el) {
-  el.style.height = 'auto';
-  el.style.height = Math.min(el.scrollHeight, 100) + 'px';
 }
 
 // ========================================
@@ -796,12 +699,6 @@ async function loadMyPage() {
 // ========================================
 // ユーティリティ
 // ========================================
-
-function formatTimeOnly(ts) {
-  if (!ts) return '';
-  const d = ts.toDate ? ts.toDate() : new Date(ts);
-  return d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
-}
 
 function showToast(msg, type = 'info') {
   const container = document.getElementById('toastContainer');

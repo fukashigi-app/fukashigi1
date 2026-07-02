@@ -1205,6 +1205,75 @@ body {
 .rank-badge-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
 
 /* ===========================
+   ランキング
+=========================== */
+
+.ranking-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.ranking-row:last-child { border-bottom: none; }
+.ranking-row.ranking-me {
+  background: var(--gold-dim);
+  border-radius: 8px;
+  padding: 12px 10px;
+  border-bottom: none;
+  margin-bottom: 2px;
+}
+
+.ranking-rank {
+  width: 32px;
+  text-align: center;
+  font-size: 20px;
+  font-weight: 900;
+  font-family: 'Inter', sans-serif;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.ranking-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--bg-card2);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.ranking-name {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ranking-points {
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--gold);
+  font-family: 'Inter', sans-serif;
+  flex-shrink: 0;
+}
+
+.ranking-pt-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-left: 2px;
+}
+
+/* ===========================
    PC向け最大幅制御
 =========================== */
 

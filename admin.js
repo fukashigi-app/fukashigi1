@@ -418,6 +418,62 @@ async function sendPasswordReset(email) {
   }
 }
 
+async function createAccount() {
+  const name     = document.getElementById('newAccountName').value.trim();
+  const email    = document.getElementById('newAccountEmail').value.trim();
+  const password = document.getElementById('newAccountPassword').value;
+  const role     = document.getElementById('newAccountRole').value;
+
+  if (!name)                         { showToast('名前を入力してください', 'error'); return; }
+  if (!email)                        { showToast('メールアドレスを入力してください', 'error'); return; }
+  if (!password || password.length < 6) { showToast('パスワードは6文字以上で入力してください', 'error'); return; }
+
+  const btn = document.getElementById('createAccountBtn');
+  btn.disabled = true;
+  btn.textContent = '作成中…';
+
+  try {
+    // セカンダリアプリを使ってアカウント作成（管理者のセッションを維持するため）
+    const secondaryApp = firebase.apps.find(a => a.name === 'secondary')
+      || firebase.initializeApp(firebaseConfig, 'secondary');
+    const secondaryAuth = secondaryApp.auth();
+
+    const cred = await secondaryAuth.createUserWithEmailAndPassword(email, password);
+    const uid  = cred.user.uid;
+    await secondaryAuth.signOut();
+
+    await db.collection('users').doc(uid).set({
+      uid,
+      name,
+      email,
+      iconUrl:   '',
+      bio:       '',
+      role,
+      points:    0,
+      disabled:  false,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+
+    showToast(`アカウント「${name}」を作成しました`, 'success');
+    document.getElementById('newAccountName').value     = '';
+    document.getElementById('newAccountEmail').value    = '';
+    document.getElementById('newAccountPassword').value = '';
+    document.getElementById('newAccountRole').value     = 'member';
+    loadAccounts();
+  } catch (e) {
+    const errMsgs = {
+      'auth/email-already-in-use': 'このメールアドレスは既に使用されています',
+      'auth/invalid-email':        '有効なメールアドレスを入力してください',
+      'auth/weak-password':        'パスワードが弱すぎます（6文字以上必要）',
+    };
+    showToast(errMsgs[e.code] || 'エラー: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '作成する';
+  }
+}
+
 // ========================================
 // イベント管理
 // ========================================

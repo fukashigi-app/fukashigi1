@@ -77,6 +77,35 @@
   <div class="admin-content">
     <div class="page-title">アカウント管理</div>
 
+    <!-- 新規アカウント作成フォーム -->
+    <div class="card card-premium" style="margin-bottom:24px;">
+      <div style="font-size:14px;font-weight:700;color:var(--gold);margin-bottom:18px;letter-spacing:0.06em;">新規アカウント作成</div>
+      <div class="form-group">
+        <label class="form-label">名前 *</label>
+        <input type="text" class="form-input" id="newAccountName" placeholder="メンバーの名前" maxlength="20">
+      </div>
+      <div class="form-group">
+        <label class="form-label">メールアドレス *</label>
+        <input type="email" class="form-input" id="newAccountEmail" placeholder="example@email.com">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="form-group">
+          <label class="form-label">パスワード *</label>
+          <input type="password" class="form-input" id="newAccountPassword" placeholder="6文字以上">
+        </div>
+        <div class="form-group">
+          <label class="form-label">権限</label>
+          <div class="select-wrap">
+            <select class="form-select" id="newAccountRole">
+              <option value="member">メンバー</option>
+              <option value="admin">管理者</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <button class="btn btn-gold btn-block" id="createAccountBtn" onclick="createAccount()">作成する</button>
+    </div>
+
     <div class="search-box">
       <span class="search-icon">🔍</span>
       <input type="text" class="form-input" id="accountSearch" placeholder="名前・メールで検索…" oninput="filterAccounts()">
