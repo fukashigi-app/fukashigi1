@@ -43,8 +43,8 @@
     <div id="loginForm">
       <div id="loginError" class="error-msg"></div>
       <div class="form-group">
-        <label class="form-label">メールアドレス</label>
-        <input type="email" class="form-input" id="loginEmail" placeholder="member@fukashigi.app" autocomplete="email">
+        <label class="form-label">メールアドレス または ログインID</label>
+        <input type="text" class="form-input" id="loginEmail" placeholder="メールまたはログインID" autocomplete="username" inputmode="email">
       </div>
       <div class="form-group">
         <label class="form-label">パスワード</label>
@@ -113,12 +113,16 @@
   }
 
   async function doLogin() {
-    const email = document.getElementById('loginEmail').value.trim();
+    let input  = document.getElementById('loginEmail').value.trim();
     const pass  = document.getElementById('loginPassword').value;
     const errEl = document.getElementById('loginError');
     const btn   = document.getElementById('loginBtn');
 
-    if (!email || !pass) { showErr(errEl, 'メールアドレスとパスワードを入力してください'); return; }
+    if (!input || !pass) { showErr(errEl, 'ログインIDとパスワードを入力してください'); return; }
+
+    // @を含まない場合はログインIDとしてメールに変換
+    const email = input.includes('@') ? input : `${input}@fukashigi.app`;
+
     btn.disabled = true;
     btn.textContent = '認証中…';
     errEl.classList.remove('show');
@@ -129,11 +133,11 @@
       btn.disabled = false;
       btn.textContent = 'ログイン';
       const msgs = {
-        'auth/user-not-found':    'このメールアドレスは登録されていません',
-        'auth/wrong-password':    'パスワードが違います',
-        'auth/invalid-email':     'メールアドレスの形式が正しくありません',
-        'auth/too-many-requests': 'しばらく待ってから再試行してください',
-        'auth/invalid-credential': 'メールアドレスまたはパスワードが違います',
+        'auth/user-not-found':     'ログインIDまたはパスワードが違います',
+        'auth/wrong-password':     'ログインIDまたはパスワードが違います',
+        'auth/invalid-email':      'ログインIDの形式が正しくありません',
+        'auth/too-many-requests':  'しばらく待ってから再試行してください',
+        'auth/invalid-credential': 'ログインIDまたはパスワードが違います',
       };
       showErr(errEl, msgs[e.code] || 'ログインに失敗しました');
     }

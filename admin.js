@@ -418,19 +418,34 @@ async function sendPasswordReset(email) {
   }
 }
 
-async function createAccount() {
-  const name     = document.getElementById('newAccountName').value.trim();
-  const email    = document.getElementById('newAccountEmail').value.trim();
-  const password = document.getElementById('newAccountPassword').value;
-  const role     = document.getElementById('newAccountRole').value;
+function generateLoginId() {
+  const chars = 'abcdefghijkmnpqrstuvwxyz23456789';
+  let id = '';
+  for (let i = 0; i < 8; i++) id += chars[Math.floor(Math.random() * chars.length)];
+  return id;
+}
 
-  if (!name)                         { showToast('名前を入力してください', 'error'); return; }
-  if (!email)                        { showToast('メールアドレスを入力してください', 'error'); return; }
-  if (!password || password.length < 6) { showToast('パスワードは6文字以上で入力してください', 'error'); return; }
+function generatePassword() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+  let pw = '';
+  for (let i = 0; i < 8; i++) pw += chars[Math.floor(Math.random() * chars.length)];
+  return pw;
+}
+
+async function createAccount() {
+  const name = document.getElementById('newAccountName').value.trim();
+  const role = document.getElementById('newAccountRole').value;
+
+  if (!name) { showToast('名前を入力してください', 'error'); return; }
 
   const btn = document.getElementById('createAccountBtn');
   btn.disabled = true;
   btn.textContent = '作成中…';
+  document.getElementById('createdAccountInfo').style.display = 'none';
+
+  const loginId  = generateLoginId();
+  const password = generatePassword();
+  const email    = `${loginId}@fukashigi.app`;
 
   try {
     // セカンダリアプリを使ってアカウント作成（管理者のセッションを維持するため）
@@ -446,6 +461,7 @@ async function createAccount() {
       uid,
       name,
       email,
+      loginId,
       iconUrl:   '',
       bio:       '',
       role,
@@ -455,23 +471,31 @@ async function createAccount() {
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
 
+    document.getElementById('newAccountName').value = '';
+    document.getElementById('newAccountRole').value = 'member';
+    document.getElementById('createdLoginId').textContent  = loginId;
+    document.getElementById('createdPassword').textContent = password;
+    document.getElementById('createdAccountInfo').style.display = '';
     showToast(`アカウント「${name}」を作成しました`, 'success');
-    document.getElementById('newAccountName').value     = '';
-    document.getElementById('newAccountEmail').value    = '';
-    document.getElementById('newAccountPassword').value = '';
-    document.getElementById('newAccountRole').value     = 'member';
     loadAccounts();
   } catch (e) {
     const errMsgs = {
-      'auth/email-already-in-use': 'このメールアドレスは既に使用されています',
-      'auth/invalid-email':        '有効なメールアドレスを入力してください',
-      'auth/weak-password':        'パスワードが弱すぎます（6文字以上必要）',
+      'auth/email-already-in-use': 'ログインIDが重複しました。もう一度試してください',
+      'auth/weak-password':        'パスワード生成に失敗しました。再試行してください',
     };
     showToast(errMsgs[e.code] || 'エラー: ' + e.message, 'error');
   } finally {
     btn.disabled = false;
     btn.textContent = '作成する';
   }
+}
+
+function copyCreatedCredentials() {
+  const id = document.getElementById('createdLoginId').textContent;
+  const pw = document.getElementById('createdPassword').textContent;
+  navigator.clipboard.writeText(`ログインID: ${id}\nパスワード: ${pw}`)
+    .then(() => showToast('クリップボードにコピーしました', 'success'))
+    .catch(() => showToast('コピーに失敗しました', 'error'));
 }
 
 // ========================================

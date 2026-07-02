@@ -80,20 +80,12 @@
     <!-- 新規アカウント作成フォーム -->
     <div class="card card-premium" style="margin-bottom:24px;">
       <div style="font-size:14px;font-weight:700;color:var(--gold);margin-bottom:18px;letter-spacing:0.06em;">新規アカウント作成</div>
-      <div class="form-group">
-        <label class="form-label">名前 *</label>
-        <input type="text" class="form-input" id="newAccountName" placeholder="メンバーの名前" maxlength="20">
-      </div>
-      <div class="form-group">
-        <label class="form-label">メールアドレス *</label>
-        <input type="email" class="form-input" id="newAccountEmail" placeholder="example@email.com">
-      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        <div class="form-group">
-          <label class="form-label">パスワード *</label>
-          <input type="password" class="form-input" id="newAccountPassword" placeholder="6文字以上">
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">名前 *</label>
+          <input type="text" class="form-input" id="newAccountName" placeholder="メンバーの名前" maxlength="20">
         </div>
-        <div class="form-group">
+        <div class="form-group" style="margin-bottom:0;">
           <label class="form-label">権限</label>
           <div class="select-wrap">
             <select class="form-select" id="newAccountRole">
@@ -103,7 +95,18 @@
           </div>
         </div>
       </div>
+      <p style="font-size:11px;color:var(--text-muted);margin:10px 0 14px;line-height:1.6;">ログインIDと初期パスワードは自動生成されます。作成後にメンバーへ共有してください。</p>
       <button class="btn btn-gold btn-block" id="createAccountBtn" onclick="createAccount()">作成する</button>
+
+      <!-- 作成完了後に表示する認証情報カード -->
+      <div id="createdAccountInfo" style="display:none;margin-top:18px;background:var(--bg-card2);border:1px solid rgba(212,175,55,0.4);border-radius:8px;padding:16px;">
+        <div style="font-size:12px;font-weight:700;color:var(--gold);margin-bottom:12px;letter-spacing:0.06em;">✓ アカウント作成完了 — メンバーへ共有してください</div>
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:6px;">ログインID</div>
+        <div id="createdLoginId" style="font-size:18px;font-weight:900;color:var(--text);font-family:'Inter',monospace;margin-bottom:14px;letter-spacing:0.08em;"></div>
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:6px;">初期パスワード</div>
+        <div id="createdPassword" style="font-size:18px;font-weight:900;color:var(--text);font-family:'Inter',monospace;margin-bottom:16px;letter-spacing:0.08em;"></div>
+        <button class="btn btn-outline btn-block btn-sm" onclick="copyCreatedCredentials()">クリップボードにコピー</button>
+      </div>
     </div>
 
     <div class="search-box">
