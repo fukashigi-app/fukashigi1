@@ -421,10 +421,21 @@ function openAccountModal(uid) {
       </div>
     </div>
 
-    <div class="point-form">
+    <div class="point-form" style="margin-bottom:12px;">
       <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--gold);">パスワードリセット</div>
       <button class="btn btn-outline btn-block btn-sm" onclick="sendPasswordReset('${escHtml(m.email || '')}')">
         パスワードリセットメールを送信
+      </button>
+    </div>
+
+    <div class="point-form" style="border-top:1px solid var(--danger);padding-top:14px;margin-top:4px;">
+      <div style="font-size:13px;font-weight:700;margin-bottom:6px;color:var(--danger);">アカウント削除</div>
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.6;">
+        Firestore のプロフィールデータ・ポイント・チェックイン履歴を削除します。<br>
+        この操作は取り消せません。
+      </p>
+      <button class="btn btn-danger btn-block btn-sm" onclick="deleteAccount('${uid}','${escHtml(m.name || '')}')">
+        アカウントを削除する
       </button>
     </div>
   `;
@@ -433,6 +444,33 @@ function openAccountModal(uid) {
 
 function closeAccountModal() {
   document.getElementById('accountModal').classList.remove('open');
+}
+
+async function deleteAccount(uid, name) {
+  if (!confirm(`「${name}」のアカウントを削除しますか？\nプロフィール・ポイント・チェックイン履歴がすべて削除されます。この操作は取り消せません。`)) return;
+
+  try {
+    const batch = db.batch();
+    batch.delete(db.collection('users').doc(uid));
+
+    // チェックイン履歴も削除
+    const checkinsSnap = await db.collection('checkins').where('uid', '==', uid).get();
+    checkinsSnap.docs.forEach(d => batch.delete(d.ref));
+
+    // ポイントログも削除
+    const logsSnap = await db.collection('pointLogs').where('uid', '==', uid).get();
+    logsSnap.docs.forEach(d => batch.delete(d.ref));
+
+    await batch.commit();
+
+    allAccounts = allAccounts.filter(m => m.id !== uid);
+    allAccountsFiltered = allAccountsFiltered.filter(m => m.id !== uid);
+    closeAccountModal();
+    renderAccounts();
+    showToast(`「${name}」を削除しました`, 'info');
+  } catch (e) {
+    showToast('削除に失敗しました: ' + e.message, 'error');
+  }
 }
 
 async function changeRoleFromAccount(uid, role) {
