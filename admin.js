@@ -363,22 +363,27 @@ function renderAccounts() {
   }
   container.innerHTML = allAccountsFiltered.map(m => {
     const isDisabled = m.disabled || false;
+    const emailEsc   = escHtml(m.email || '');
     return `
       <div class="account-row" onclick="openAccountModal('${m.id}')">
         <div class="account-status-dot ${isDisabled ? 'disabled' : ''}"></div>
         <div class="member-avatar-sm">${avatarHtml(m.iconUrl)}</div>
         <div class="member-info">
           <div class="member-name">${escHtml(m.name || '—')}</div>
-          <div class="account-email">${escHtml(m.email || '—')}</div>
+          <div class="account-email">${emailEsc}</div>
           <div class="member-sub" style="margin-top:3px;">
             <span class="badge badge-${m.role==='admin'?'gold':'blue'}">${m.role==='admin'?'管理者':'メンバー'}</span>
             ${isDisabled ? '<span class="badge badge-gray" style="margin-left:4px;">無効</span>' : ''}
             <span style="margin-left:6px;font-size:11px;color:var(--text-muted);">登録: ${formatDateOnly(m.createdAt)}</span>
           </div>
         </div>
-        <div style="text-align:right;flex-shrink:0;">
-          <div style="font-size:15px;font-weight:700;color:var(--gold);font-family:'Inter',sans-serif;">${(m.points||0).toLocaleString()}</div>
-          <div style="font-size:10px;color:var(--text-muted);font-family:'Inter',sans-serif;">pt</div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;">
+          <div style="text-align:right;">
+            <div style="font-size:15px;font-weight:700;color:var(--gold);font-family:'Inter',sans-serif;">${(m.points||0).toLocaleString()}</div>
+            <div style="font-size:10px;color:var(--text-muted);font-family:'Inter',sans-serif;">pt</div>
+          </div>
+          ${m.email ? `<button class="btn btn-outline btn-sm" style="font-size:11px;padding:4px 8px;white-space:nowrap;"
+            onclick="event.stopPropagation();sendPasswordReset('${emailEsc}')">📧 PW リセット</button>` : ''}
         </div>
       </div>`;
   }).join('');
