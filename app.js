@@ -12,9 +12,6 @@ let selectedEvent   = null;
 let calYear  = new Date().getFullYear();
 let calMonth = new Date().getMonth();
 
-// チャット
-let chatUnsubscribe = null;
-
 // プロフィール編集
 let selectedIcon      = null;
 let selectedImageFile = null;
@@ -67,7 +64,6 @@ async function loadUserData() {
 }
 
 function doLogout() {
-  if (chatUnsubscribe) chatUnsubscribe();
   auth.signOut().then(() => { window.location.href = 'index.html'; });
 }
 
@@ -102,9 +98,9 @@ function switchTab(tab) {
   const navEl = document.getElementById('nav-' + tab);
   if (navEl) navEl.classList.add('active');
 
-  if (tab === 'mypage') loadMyPage();
-  if (tab === 'chat')   loadChat();
-  if (tab === 'events') { renderCalendar(); renderDayList(); }
+  if (tab === 'mypage')   loadMyPage();
+  if (tab === 'ranking')  loadRanking();
+  if (tab === 'events')   { renderCalendar(); renderDayList(); }
 }
 
 // ========================================
@@ -490,128 +486,46 @@ function closeQRScanner() {
 }
 
 // ========================================
-// チャット
+// ランキング
 // ========================================
 
-function loadChat() {
-  if (chatUnsubscribe) {
-    chatUnsubscribe();
-    chatUnsubscribe = null;
-  }
-
-  const container = document.getElementById('chatMessages');
-  container.innerHTML = '';
-
-  // 24時間以内のメッセージのみ取得
-  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const firestoreCutoff = firebase.firestore.Timestamp.fromDate(cutoff);
-
-  chatUnsubscribe = db
-    .collection('chats')
-    .where('createdAt', '>=', firestoreCutoff)
-    .orderBy('createdAt', 'asc')
-    .limit(100)
-    .onSnapshot(snap => {
-      renderChatMessages(snap.docs);
-    }, err => {
-      const errMsg = err.code === 'permission-denied'
-        ? 'チャットの読み込み権限がありません。'
-        : '読み込みエラー: ' + err.message;
-      container.innerHTML = `<div class="chat-system-msg">${escHtml(errMsg)}</div>`;
-    });
-}
-
-function renderChatMessages(docs) {
-  const container = document.getElementById('chatMessages');
-  const wasAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 60;
-
-  if (docs.length === 0) {
-    container.innerHTML = '<div class="chat-system-msg">まだメッセージがありません。最初のメッセージを送ってみましょう！</div>';
-    return;
-  }
-
-  container.innerHTML = docs.map(doc => {
-    const m   = doc.data();
-    const own = m.uid === currentUser?.uid;
-    const iconHtml = avatarContent(m.iconUrl || m.userIcon);
-    const canDelete = own || (currentUserData?.role === 'admin');
-    const timeStr = m.createdAt ? formatTimeOnly(m.createdAt) : '';
-    const nameLabel = escHtml(m.name || '—');
-
-    return `
-      <div class="chat-msg ${own ? 'own' : ''}">
-        <div class="chat-avatar-col">
-          <div class="chat-avatar">${iconHtml}</div>
-          <div class="chat-username">${nameLabel}</div>
-        </div>
-        <div class="chat-content">
-          <div class="chat-bubble">${escHtml(m.message)}</div>
-          <div class="chat-time-row">
-            <span class="chat-time">${timeStr}</span>
-            ${canDelete ? `<button class="chat-delete" onclick="deleteChatMessage('${doc.id}')">削除</button>` : ''}
+async function loadRanking() {
+  const container = document.getElementById('rankingList');
+  container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-muted);">読み込み中…</div>';
+  try {
+    const snap = await db.collection('users').orderBy('points', 'desc').limit(50).get();
+    if (snap.empty) {
+      container.innerHTML = '<div class="empty-state"><p>データがありません</p></div>';
+      return;
+    }
+    const medals = ['🥇', '🥈', '🥉'];
+    container.innerHTML = snap.docs.map((doc, i) => {
+      const m     = doc.data();
+      const isMe  = doc.id === currentUser?.uid;
+      const rank  = i + 1;
+      const isTop = rank <= 3;
+      return `
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:${isMe ? 'rgba(212,175,55,0.08)' : 'var(--bg-card)'};border:1px solid ${isMe ? 'rgba(212,175,55,0.4)' : 'var(--border)'};border-radius:10px;margin-bottom:8px;">
+          <div style="width:30px;text-align:center;font-size:${isTop ? '22' : '13'}px;font-weight:700;color:${isTop ? 'var(--gold)' : 'var(--text-muted)'};flex-shrink:0;font-family:'Inter',sans-serif;">
+            ${isTop ? medals[i] : rank}
           </div>
-        </div>
-      </div>`;
-  }).join('');
-
-  if (wasAtBottom) {
-    container.scrollTop = container.scrollHeight;
-  }
-}
-
-async function sendChatMessage() {
-  const input   = document.getElementById('chatInput');
-  const message = input.value.trim();
-  if (!message || !currentUser) return;
-
-  const btn = document.getElementById('chatSendBtn');
-  btn.disabled = true;
-  const savedMsg = input.value;
-  input.value = '';
-  autoResizeChatInput(input);
-
-  try {
-    await db.collection('chats').add({
-      uid:      currentUser.uid,
-      name:     currentUserData?.name || '名無し',
-      iconUrl:  currentUserData?.iconUrl || '',
-      message,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-    });
+          <div style="width:40px;height:40px;border-radius:50%;overflow:hidden;background:var(--bg-card2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">
+            ${avatarContent(m.iconUrl)}
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:14px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+              ${escHtml(m.name || '—')}${isMe ? ' <span style="font-size:10px;color:var(--gold);font-family:Inter,sans-serif;letter-spacing:0.06em;">YOU</span>' : ''}
+            </div>
+          </div>
+          <div style="text-align:right;flex-shrink:0;">
+            <div style="font-size:17px;font-weight:800;color:var(--gold);font-family:'Inter',sans-serif;">${(m.points || 0).toLocaleString()}</div>
+            <div style="font-size:10px;color:var(--text-muted);font-family:'Inter',sans-serif;">pt</div>
+          </div>
+        </div>`;
+    }).join('');
   } catch (e) {
-    const errMsgs = {
-      'permission-denied': '送信権限がありません。ログインし直してください。',
-      'unavailable':       'ネットワークエラーが発生しました。接続を確認してください。',
-    };
-    const code = e.code?.split('/')[1] || '';
-    showToast(errMsgs[code] || '送信に失敗しました：' + e.message, 'error');
-    input.value = savedMsg;
-    autoResizeChatInput(input);
-  } finally {
-    btn.disabled = false;
-    input.focus();
+    container.innerHTML = '<div class="empty-state"><p>読み込みエラー</p></div>';
   }
-}
-
-async function deleteChatMessage(msgId) {
-  if (!confirm('このメッセージを削除しますか？')) return;
-  try {
-    await db.collection('chats').doc(msgId).delete();
-  } catch (e) {
-    showToast('削除に失敗しました', 'error');
-  }
-}
-
-function chatKeyDown(e) {
-  if (e.key === 'Enter' && !e.shiftKey && window.innerWidth >= 600) {
-    e.preventDefault();
-    sendChatMessage();
-  }
-}
-
-function autoResizeChatInput(el) {
-  el.style.height = 'auto';
-  el.style.height = Math.min(el.scrollHeight, 100) + 'px';
 }
 
 // ========================================
@@ -822,12 +736,8 @@ function escHtml(str) {
 }
 
 // モーダル外クリックで閉じる
-document.getElementById('eventModal').addEventListener('click', function(e) {
-  if (e.target === this) closeEventModal();
-});
-document.getElementById('qrModal').addEventListener('click', function(e) {
-  if (e.target === this) closeQRScanner();
-});
-document.getElementById('editProfileModal').addEventListener('click', function(e) {
-  if (e.target === this) closeEditProfile();
+['eventModal', 'qrModal', 'editProfileModal'].forEach(id => {
+  document.getElementById(id).addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('open');
+  });
 });
