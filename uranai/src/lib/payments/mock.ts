@@ -20,6 +20,8 @@ type MockPayload = { a: number; c: string; s: string; f: string; t: number; n: s
 export const MOCK_TOKENS = {
   success: "mock_tok_success",
   declined: "mock_tok_declined",
+  /** 課金されたか不明な通信エラーを再現（課金はされない） */
+  networkError: "mock_tok_network",
 } as const;
 
 const TOLERANCE_SEC = 300;
@@ -75,6 +77,9 @@ export class MockProvider implements PaymentProvider {
   async createCharge(input: CreateChargeInput): Promise<CreateChargeResult> {
     if (input.cardToken === MOCK_TOKENS.declined) {
       return { ok: false, code: "card_declined", userMessage: "カードが利用できませんでした。別のカードをお試しください。", retryable: true };
+    }
+    if (input.cardToken === MOCK_TOKENS.networkError) {
+      return { ok: false, code: "network_error", userMessage: "通信エラーが発生しました。お支払い状況を確認しています。", retryable: false, ambiguous: true };
     }
     if (input.cardToken !== MOCK_TOKENS.success) {
       return { ok: false, code: "invalid_token", userMessage: "カード情報を確認できませんでした。もう一度入力してください。", retryable: true };

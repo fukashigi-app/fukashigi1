@@ -103,6 +103,20 @@ export async function confirmCharge(providerId: ProviderId, chargeId: string): P
   });
 }
 
+/**
+ * 決済失敗: Charge を取得し直して未決済を確認できた場合のみ、対応する処理中の checkout を FAILED にして再試行可能にする
+ */
+export async function markChargeFailed(providerId: ProviderId, chargeId: string): Promise<boolean> {
+  const charge = await getProvider(providerId).retrieveCharge(chargeId);
+  if (!charge || charge.paid) return false;
+  const updated = await db()
+    .update(checkouts)
+    .set({ status: "FAILED", failureCode: "charge_failed" })
+    .where(and(eq(checkouts.provider, providerId), eq(checkouts.providerPaymentId, chargeId), eq(checkouts.status, "PROCESSING")))
+    .returning({ id: checkouts.id });
+  return updated.length > 0;
+}
+
 /** 返金: 売上集計から除外し、未使用の占い権利を失効させる */
 export async function markRefunded(providerId: ProviderId, chargeId: string): Promise<boolean> {
   const charge = await getProvider(providerId).retrieveCharge(chargeId);

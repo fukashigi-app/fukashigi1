@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, notInArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { settlements, stores } from "@/lib/db/schema";
 import { isValidYearMonth, jstMonthRange, jstYearMonth } from "@/lib/time";
@@ -38,6 +38,20 @@ export async function generateSettlements(yearMonth: string, actor: Actor): Prom
       if (res.length) upserted++;
       else skipped++;
     }
+    // 返金等で当月の決済がなくなった店舗の未払い精算は 0 に更新（古い金額のまま振り込まないように）
+    const storeIds = agg.rows.map((r) => String(r.store_id));
+    const zeroed = await tx
+      .update(settlements)
+      .set({ transactionCount: 0, grossSales: 0, storeShare: 0, updatedAt: new Date() })
+      .where(
+        and(
+          eq(settlements.yearMonth, yearMonth),
+          eq(settlements.status, "UNPAID"),
+          storeIds.length ? notInArray(settlements.storeId, storeIds) : undefined,
+        ),
+      )
+      .returning({ id: settlements.id });
+    upserted += zeroed.length;
     await writeAudit({ actorUserId: actor.userId, actorRole: actor.role, action: "settlement.generate", targetType: "settlement", targetId: yearMonth, after: { yearMonth, upserted, skipped } }, tx);
     return { upserted, skipped };
   });
@@ -70,5 +84,6 @@ export async function listSettlements(opts: { yearMonth?: string; status?: Settl
     .innerJoin(stores, eq(stores.id, settlements.storeId))
     .where(conds.length ? and(...conds) : undefined)
     .orderBy(desc(settlements.yearMonth), stores.name)
-    .limit(opts.limit ?? 500);
+    // limit 未指定時は全件（振込CSV・精算画面で店舗が欠けないように）
+    .limit(opts.limit ?? Number.MAX_SAFE_INTEGER);
 }

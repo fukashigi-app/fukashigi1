@@ -56,10 +56,17 @@ describe("PayjpProvider.createCharge", () => {
     }
   });
 
+  it("5xx は課金有無が不明（ambiguous）として扱う", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: "server_error" } }), { status: 502 })));
+    const r = await provider.createCharge({ amount: 100, currency: "jpy", cardToken: "tok", description: "", metadata: { checkoutId: "c", storeId: "s", fortuneType: "BLOOD" }, idempotencyKey: "k" });
+    expect(!r.ok && r.ambiguous).toBe(true);
+  });
+
   it("通信エラーは network_error", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ECONNRESET")));
     const r = await provider.createCharge({ amount: 100, currency: "jpy", cardToken: "tok", description: "", metadata: { checkoutId: "c", storeId: "s", fortuneType: "BLOOD" }, idempotencyKey: "k" });
     expect(!r.ok && r.code).toBe("network_error");
+    expect(!r.ok && r.ambiguous).toBe(true);
   });
 });
 

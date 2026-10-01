@@ -1,6 +1,6 @@
 import "server-only";
 import { NextResponse } from "next/server";
-import { beginWebhookEvent, confirmCharge, finishWebhookEvent, markRefunded } from "./confirm";
+import { beginWebhookEvent, confirmCharge, finishWebhookEvent, markChargeFailed, markRefunded } from "./confirm";
 import { getProvider } from "./index";
 import { WebhookVerificationError, type ProviderId } from "./types";
 
@@ -36,6 +36,8 @@ export async function handleWebhook(providerId: ProviderId, req: Request): Promi
       }
     } else if (event.kind === "charge.refunded") {
       await markRefunded(providerId, event.chargeId);
+    } else if (event.kind === "charge.failed") {
+      await markChargeFailed(providerId, event.chargeId);
     }
     await finishWebhookEvent(providerId, event.eventId);
     return NextResponse.json({ received: true });

@@ -5,7 +5,7 @@ import { checkouts, stores, type FortuneTypeValue } from "@/lib/db/schema";
 import { CHECKOUT_TTL_MS, CURRENCY, PRICE_JPY } from "@/config/pricing";
 import { siteConfig } from "@/config/site";
 import { activeProvider } from "@/lib/payments";
-import { confirmCharge } from "@/lib/payments/confirm";
+import { confirmCharge, markChargeFailed } from "@/lib/payments/confirm";
 import { isProviderId } from "@/lib/payments";
 import { FORTUNE_CATALOG } from "@/lib/fortune/catalog";
 import { randomToken, sha256Hex } from "@/lib/security/crypto";
@@ -130,9 +130,20 @@ export async function payCheckout(token: string | null, cardToken: string): Prom
     idempotencyKey: `${checkout.id}-${locked.attemptCount}`,
   };
   let result = await provider.createCharge(input);
-  if (!result.ok && result.code === "network_error") {
+  if (!result.ok && result.ambiguous) {
     // 冪等キーが同じなので再送しても二重課金にならない
     result = await provider.createCharge(input);
+  }
+
+  if (!result.ok && result.ambiguous) {
+    // 課金されたか不明。FAILED にすると別の冪等キーで再課金できてしまうため PROCESSING のまま保留し、
+    // Webhook（metadata.checkoutId で照合）を待つ。届かなければ一定時間後に失敗扱いにする
+    console.warn("[checkout] ambiguous charge result; keeping PROCESSING", { checkoutId: checkout.id, code: result.code });
+    await db()
+      .update(checkouts)
+      .set({ failureCode: result.code.slice(0, 100) })
+      .where(and(eq(checkouts.id, checkout.id), eq(checkouts.status, "PROCESSING")));
+    return { status: "processing" };
   }
 
   if (!result.ok) {
@@ -152,6 +163,8 @@ export async function payCheckout(token: string | null, cardToken: string): Prom
 
 /** Webhook が届くまでの待ち時間。これを過ぎたら API で直接照合する */
 const RECONCILE_AFTER_MS = 5_000;
+/** Charge ID が分からないまま処理中になっている決済を失敗扱いにするまでの時間 */
+export const STALE_UNKNOWN_CHARGE_MS = 15 * 60 * 1000;
 
 export type CheckoutStatus = "created" | "processing" | "succeeded" | "failed" | "expired";
 
@@ -174,10 +187,22 @@ export async function getCheckoutStatus(token: string | null): Promise<{ status:
       return { status: checkout.expiresAt > new Date() ? "created" : "expired" };
     case "PROCESSING": {
       const started = checkout.processingStartedAt?.getTime() ?? 0;
+      if (!checkout.providerPaymentId && Date.now() - started > STALE_UNKNOWN_CHARGE_MS) {
+        // 結果不明のまま Webhook も来なかった = 課金されていないと判断し、再試行を許可
+        const failed = await db()
+          .update(checkouts)
+          .set({ status: "FAILED", failureCode: "stale_processing" })
+          .where(and(eq(checkouts.id, checkout.id), eq(checkouts.status, "PROCESSING"), sql`${checkouts.providerPaymentId} IS NULL`))
+          .returning({ id: checkouts.id });
+        if (failed.length) return { status: "failed", failureCode: "stale_processing" };
+      }
       if (checkout.providerPaymentId && isProviderId(checkout.provider) && Date.now() - started > RECONCILE_AFTER_MS) {
         try {
           const outcome = await confirmCharge(checkout.provider, checkout.providerPaymentId);
           if (outcome.status === "confirmed" || outcome.status === "duplicate") return { status: "succeeded" };
+          if (outcome.status === "not_paid" && (await markChargeFailed(checkout.provider, checkout.providerPaymentId))) {
+            return { status: "failed", failureCode: "charge_failed" };
+          }
         } catch (e) {
           console.error("[checkout] reconcile failed", { checkoutId: checkout.id, error: (e as Error).message });
         }

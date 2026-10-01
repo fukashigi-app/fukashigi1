@@ -11,6 +11,8 @@ import { authSessions, checkouts, fortuneResults, fortuneSessions, stores, trans
 import { randomToken, sha256Hex } from "@/lib/security/crypto";
 import { signMockWebhook } from "@/lib/payments/mock";
 import { createStore, createStoreUser, setStoreStatus } from "@/lib/services/stores";
+import { generateSettlements } from "@/lib/services/settlements";
+import { settlements } from "@/lib/db/schema";
 
 const BASE = process.env.E2E_BASE_URL ?? process.env.APP_URL ?? "http://localhost:3000";
 const SECRET = process.env.MOCK_WEBHOOK_SECRET!;
@@ -158,6 +160,21 @@ async function main() {
   assert.equal(res.status, 307);
   step("結果表示・再表示OK／別ブラウザからは閲覧不可／入力画面は結果へリダイレクト");
 
+  // 11b. 課金結果が不明な通信エラーでは再課金させない
+  const amb = new Client();
+  await amb.req(`/s/${store.storeCode}`);
+  res = await amb.req("/api/checkout", { method: "POST", json: { fortuneType: "BLOOD" } });
+  const { checkoutId: ambId } = (await res.json()) as { checkoutId: string };
+  res = await amb.req("/api/checkout/pay", { method: "POST", json: { cardToken: "mock_tok_network" } });
+  assert.equal(res.status, 200);
+  assert.equal(((await res.json()) as { status: string }).status, "processing");
+  res = await amb.req("/api/checkout/pay", { method: "POST", json: { cardToken: "mock_tok_success" } });
+  assert.equal(((await res.json()) as { status: string }).status, "processing");
+  const [ambCo] = await db().select().from(checkouts).where(eq(checkouts.id, ambId));
+  assert.equal(ambCo.status, "PROCESSING");
+  assert.equal(ambCo.attemptCount, 1);
+  step("課金結果が不明な通信エラー時は処理中のまま保留し、別キーでの再課金を許さない");
+
   // 12. 停止中店舗では決済を開始できない
   await setStoreStatus(store.id, "SUSPENDED", { userId: null, role: "SYSTEM" });
   const other = new Client();
@@ -171,6 +188,14 @@ async function main() {
   const sum = await db().select().from(transactions).where(and(eq(transactions.storeId, s.id), eq(transactions.paymentStatus, "SUCCEEDED")));
   assert.equal(sum.reduce((a, t) => a + t.storeShare, 0), 30);
   step("店舗売上 30円 計上を確認");
+
+  // 13b. 返金等で決済がなくなった店舗の未払い精算は0円に更新される
+  await db().insert(settlements).values({ storeId: store.id, yearMonth: "2026-08", transactionCount: 5, grossSales: 500, storeShare: 150 });
+  await generateSettlements("2026-08", { userId: null, role: "SYSTEM" });
+  const [zeroed] = await db().select().from(settlements).where(and(eq(settlements.storeId, store.id), eq(settlements.yearMonth, "2026-08")));
+  assert.equal(zeroed.storeShare, 0);
+  assert.equal(zeroed.transactionCount, 0);
+  step("決済がなくなった店舗の未払い精算は再集計で0円に更新");
 
   // 14. 認可: 店舗アカウントは自店舗のみ
   const otherStore = await createStore({ name: `E2E他店舗 ${Date.now()}`, contactName: "", postalCode: "", address: "", phone: "", email: "" }, { userId: null, role: "SYSTEM" });

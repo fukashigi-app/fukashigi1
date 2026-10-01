@@ -22,7 +22,7 @@ export async function runMaintenance() {
   // 課金されたか不明なまま放置された処理中（Charge IDなし）は失敗扱い
   await d.execute(sql`
     UPDATE checkouts SET status = 'FAILED', failure_code = 'stale_processing', updated_at = now()
-    WHERE status = 'PROCESSING' AND provider_payment_id IS NULL AND processing_started_at < now() - interval '1 hour'
+    WHERE status = 'PROCESSING' AND provider_payment_id IS NULL AND processing_started_at < now() - interval '15 minutes'
   `);
   // プライバシー: 結果本文は30日、未決済の注文は7日で削除
   const purgedResults = await d.execute(sql`DELETE FROM fortune_results WHERE created_at < now() - interval '30 days'`);

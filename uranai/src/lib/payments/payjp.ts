@@ -110,6 +110,7 @@ export class PayjpProvider implements PaymentProvider {
         code: "network_error",
         userMessage: "通信エラーが発生しました。お支払い状況を確認しています。",
         retryable: false,
+        ambiguous: true,
       };
     }
     const json = (await res.json().catch(() => ({}))) as PayjpCharge & PayjpError;
@@ -120,6 +121,7 @@ export class PayjpProvider implements PaymentProvider {
         code,
         userMessage: ERROR_MESSAGES[code] ?? "お支払いを完了できませんでした。別のカードをお試しいただくか、時間をおいて再度お試しください。",
         retryable: res.status < 500,
+        ambiguous: res.status >= 500,
       };
     }
     return { ok: true, charge: toCharge(json) };

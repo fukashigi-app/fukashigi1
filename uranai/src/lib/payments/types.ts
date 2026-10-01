@@ -35,7 +35,14 @@ export type CreateChargeInput = {
 
 export type CreateChargeResult =
   | { ok: true; charge: ProviderCharge }
-  | { ok: false; code: string; userMessage: string; retryable: boolean };
+  | {
+      ok: false;
+      code: string;
+      userMessage: string;
+      retryable: boolean;
+      /** 通信断・5xx など、決済代行側で課金されたか分からない失敗。再課金させてはならない */
+      ambiguous?: boolean;
+    };
 
 export type WebhookEvent =
   | { kind: "charge.succeeded"; eventId: string; chargeId: string }
