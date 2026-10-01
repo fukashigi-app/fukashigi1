@@ -7,9 +7,10 @@ import "dotenv/config";
 import assert from "node:assert/strict";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { checkouts, fortuneResults, fortuneSessions, stores, transactions } from "@/lib/db/schema";
+import { authSessions, checkouts, fortuneResults, fortuneSessions, stores, transactions } from "@/lib/db/schema";
+import { randomToken, sha256Hex } from "@/lib/security/crypto";
 import { signMockWebhook } from "@/lib/payments/mock";
-import { createStore, setStoreStatus } from "@/lib/services/stores";
+import { createStore, createStoreUser, setStoreStatus } from "@/lib/services/stores";
 
 const BASE = process.env.E2E_BASE_URL ?? process.env.APP_URL ?? "http://localhost:3000";
 const SECRET = process.env.MOCK_WEBHOOK_SECRET!;
@@ -125,6 +126,9 @@ async function main() {
   const [session] = await db().select().from(fortuneSessions).where(eq(fortuneSessions.transactionId, tx.id));
   assert.equal(session.status, "PAID");
   step("占い権利（fortuneSession: PAID）発行");
+  res = await user.req("/api/checkout", { method: "POST", json: { fortuneType: "ZODIAC" } });
+  assert.equal(res.status, 409);
+  step("未使用の権利があるうちは新しい決済を開始させない（権利の消失防止）");
 
   // 10. 種類違いの入力は拒否、正しい入力で占い
   res = await user.req("/api/fortune", { method: "POST", json: { type: "BLOOD", bloodType: "A" } });
@@ -167,6 +171,27 @@ async function main() {
   const sum = await db().select().from(transactions).where(and(eq(transactions.storeId, s.id), eq(transactions.paymentStatus, "SUCCEEDED")));
   assert.equal(sum.reduce((a, t) => a + t.storeShare, 0), 30);
   step("店舗売上 30円 計上を確認");
+
+  // 14. 認可: 店舗アカウントは自店舗のみ
+  const otherStore = await createStore({ name: `E2E他店舗 ${Date.now()}`, contactName: "", postalCode: "", address: "", phone: "", email: "" }, { userId: null, role: "SYSTEM" });
+  const staffId = await createStoreUser(store.id, { name: "e2e", email: `e2e-${Date.now()}@example.com`, password: "E2ePassword123" }, { userId: null, role: "SYSTEM" });
+  const token = randomToken(32);
+  await db().insert(authSessions).values({ id: sha256Hex(token), userId: staffId, expiresAt: new Date(Date.now() + 3600_000) });
+  const staff = new Client();
+  staff.jar.set("sid", token);
+  res = await staff.req("/store/dashboard");
+  assert.equal(res.status, 200);
+  assert.match(await res.text(), new RegExp(store.name));
+  res = await staff.req("/admin");
+  assert.equal(res.status, 404);
+  res = await staff.req(`/api/admin/settlements?ym=2026-09`);
+  assert.equal(res.status, 404);
+  res = await staff.req(`/api/store/qr?storeId=${otherStore.id}`);
+  assert.equal(res.status, 200);
+  assert.ok(res.headers.get("content-disposition")?.includes(store.storeCode), "他店舗のQRは取得できず自店舗のQRが返る");
+  res = await new Client().req("/store/dashboard");
+  assert.equal(res.status, 307);
+  step("店舗アカウントは自店舗のみ閲覧可（運営画面404・他店舗QR不可・未ログインはリダイレクト）");
 
   console.log("\nE2E PASSED");
   process.exit(0);

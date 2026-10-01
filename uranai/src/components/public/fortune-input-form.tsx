@@ -91,7 +91,7 @@ export function FortuneInputForm({ type }: { type: FortuneTypeValue }) {
                   onClick={() => setSign(s.key)}
                   className={`glass flex flex-col items-center rounded-2xl px-1 py-3 transition-all active:scale-95 ${active ? "!border-gold-300/80 bg-gold-300/10" : ""}`}
                 >
-                  <span className={`text-2xl leading-none ${active ? "text-gold-200" : "text-gold-300/80"}`}>{s.symbol}</span>
+                  <span className={`text-2xl leading-none ${active ? "text-gold-200" : "text-gold-300/80"}`}>{`${s.symbol}\uFE0E`}</span>
                   <span className="mt-1.5 text-[13px] font-bold">{s.name}</span>
                   <span className="mt-0.5 text-[10px] text-ink-faint">{s.range}</span>
                 </button>

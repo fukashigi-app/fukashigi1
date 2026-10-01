@@ -57,6 +57,8 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 
+.font-display { font-variant-numeric: lining-nums; }
+
 body {
   background-color: var(--night-900);
   color: var(--ink);
@@ -126,7 +128,7 @@ body {
     0 20px 50px -20px rgba(0, 0, 0, 0.6);
 }
 .glass-strong {
-  background: linear-gradient(160deg, rgba(27, 37, 80, 0.75), rgba(11, 16, 38, 0.75));
+  background: linear-gradient(160deg, rgba(27, 37, 80, 0.96), rgba(11, 16, 38, 0.97));
   border: 1px solid var(--glass-border);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);

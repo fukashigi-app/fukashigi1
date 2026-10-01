@@ -69,7 +69,10 @@ export function ResultView({ result }: { result: FortuneResultData }) {
       </section>
 
       <section className="glass reveal space-y-3 rounded-3xl p-5 text-[13px] leading-relaxed text-ink-muted" style={delay(5)}>
-        <p className="text-ink">{result.advice}</p>
+        <p className="text-ink">
+          <span className="mr-2 rounded-full bg-gold-300/15 px-2 py-0.5 text-[11px] text-gold-200">開運アクション</span>
+          {result.advice.replace(/^開運アクション：/, "")}
+        </p>
         {result.traits ? <p>{result.traits}</p> : null}
       </section>
     </div>

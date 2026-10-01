@@ -28,6 +28,8 @@ export function FortuneSelector() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
+        if (data?.error?.code === "paid_session_exists") return router.push("/fortune/input");
+        if (data?.error?.code === "payment_processing") return router.push("/payment");
         setError(data?.error?.message ?? "エラーが発生しました。もう一度お試しください。");
         setLoading(false);
         return;
@@ -51,7 +53,10 @@ export function FortuneSelector() {
               type="button"
               role="radio"
               aria-checked={active}
-              onClick={() => setSelected(t)}
+              onClick={(e) => {
+                setSelected(t);
+                e.currentTarget.scrollIntoView({ behavior: "smooth", block: "center" });
+              }}
               style={{ animationDelay: `${i * 90}ms` }}
               className={`fade-up glass relative flex w-full items-center gap-4 rounded-3xl p-5 text-left transition-all duration-200 active:scale-[0.99] ${
                 active ? "!border-gold-300/80 shadow-[0_0_0_1px_rgba(223,196,136,0.5),0_18px_50px_-18px_rgba(207,171,102,0.55)]" : "hover:border-white/25"

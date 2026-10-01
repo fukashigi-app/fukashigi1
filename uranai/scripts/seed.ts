@@ -3,7 +3,7 @@
  * 運営アカウント・デモ店舗・店舗スタッフを作成する（既存なら何もしない）。
  */
 import "dotenv/config";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { stores, users } from "@/lib/db/schema";
 import { createOperator, createStore, createStoreUser, updateBankInfo } from "@/lib/services/stores";
@@ -37,6 +37,24 @@ async function main() {
   if (!cafe) {
     const c = await createStore({ name: "Café Stella（デモ店舗）", contactName: "星野 ひかり", postalCode: "530-0001", address: "大阪府大阪市北区梅田1-1-1", phone: "06-1234-5678", email: "stella@example.com" }, SYSTEM);
     await createStoreUser(c.id, { name: "星野 ひかり", email: "cafe@example.com", password: storePassword }, SYSTEM);
+  }
+
+  // デモ用の過去実績（開発環境のみ。mock の決済IDで作成）
+  const [{ n }] = (await db().execute(sql`SELECT count(*)::int AS n FROM transactions WHERE store_id = ${store.id} AND provider_payment_id LIKE 'seed\_%'`)).rows as { n: number }[];
+  if (n === 0 && process.env.SEED_DEMO_HISTORY !== "false") {
+    await db().execute(sql`
+      WITH src AS (
+        SELECT g, now() - (g * interval '83 minutes') - interval '2 hours' AS paid_at,
+          (ARRAY['BIRTHDAY','ZODIAC','BLOOD'])[1 + g % 3]::fortune_type AS ft
+        FROM generate_series(1, 260) g
+      ), co AS (
+        INSERT INTO checkouts (store_id, fortune_type, amount, status, provider, provider_payment_id, access_token_hash, attempt_count, expires_at, created_at)
+        SELECT ${store.id}, ft, 100, 'SUCCEEDED', 'mock', 'seed_' || g, md5('seed' || g || ${store.id}) || md5(g::text), 1, paid_at, paid_at FROM src
+        RETURNING id, provider_payment_id, fortune_type, created_at
+      )
+      INSERT INTO transactions (checkout_id, payment_provider, provider_payment_id, store_id, fortune_type, amount, store_share, operator_share, payment_fee, store_share_bps, fortune_status, paid_at)
+      SELECT id, 'mock', provider_payment_id, ${store.id}, fortune_type, 100, 30, 70, 4, 3000, 'COMPLETED', created_at FROM co`);
+    console.log("  demo history: 260 transactions");
   }
 
   console.log("Seed completed");

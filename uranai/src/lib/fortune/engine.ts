@@ -107,7 +107,7 @@ export const templateEngine: FortuneEngine = {
       highlight = `${ELEMENT_LABEL[sign.element]}・${sign.name}`;
     } else if (input.type === "ZODIAC") {
       const sign = zodiacInfo(input.sign);
-      subject = `${sign.symbol} ${sign.name}`;
+      subject = `${sign.symbol}\uFE0E ${sign.name}`;
       traits = ZODIAC_TRAITS[input.sign];
       // 12星座の今日のランキング（全星座を同じ seed で計算して順位付け）
       const ranking = ZODIAC_SIGNS.map((s) => ({ key: s.key, score: overallStars(this.id, date, `Z:${s.key}`).score })).sort(

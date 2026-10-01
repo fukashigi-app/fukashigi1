@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { guardPost, jsonError, jsonOk, readJson } from "@/lib/api";
-import { getQrStoreCode, setAccessCookie } from "@/lib/cookies";
-import { CheckoutError, createCheckout } from "@/lib/services/checkout";
+import { getAccessToken, getQrStoreCode, setAccessCookie } from "@/lib/cookies";
+import { getFortuneSession } from "@/lib/services/fortune";
+import { CheckoutError, createCheckout, getCheckoutByToken } from "@/lib/services/checkout";
 
 const bodySchema = z.object({ fortuneType: z.enum(["BIRTHDAY", "ZODIAC", "BLOOD"]) }).strict();
 
@@ -14,6 +15,17 @@ export async function POST(req: Request) {
     body = bodySchema.parse(await readJson(req));
   } catch {
     return jsonError(400, "invalid_request", "占いの種類を選び直してください。");
+  }
+  // 支払い済みで未使用の権利・処理中の決済がある場合は、Cookie を上書きせずそちらへ誘導（権利の消失・二重決済防止）
+  const current = await getAccessToken();
+  if (current) {
+    if ((await getFortuneSession(current)).state === "paid") {
+      return jsonError(409, "paid_session_exists", "お支払い済みの占いがあります。先にそちらをお楽しみください。");
+    }
+    const co = await getCheckoutByToken(current);
+    if (co?.checkout.status === "PROCESSING") {
+      return jsonError(409, "payment_processing", "お支払いを確認中です。確認画面に戻ります。");
+    }
   }
   try {
     const { checkoutId, accessToken } = await createCheckout(await getQrStoreCode(), body.fortuneType);
